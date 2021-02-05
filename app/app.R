@@ -50,8 +50,6 @@ load_qualtrics_file <- function(file_qualtrics) {
     df.qualtrics
 }
 
-df.qualtrics <- qualtRics::read_survey(unzip('../test/ZKC Qualtrics.zip'))
-
 # convert survey dataframe into a comprehensive igraph network
 qualtrics_to_igraph <- function(df.qualtrics) {
     df.qualtrics <- df.qualtrics %>% mutate(ego = NodeID)
