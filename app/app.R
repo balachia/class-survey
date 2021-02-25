@@ -234,7 +234,7 @@ server <- function(input, output, session) {
     output$downloadData <- downloadHandler(
         filename = "section-network.graphml",
         content = function(file) {
-            igraph::write_graph(qualtricsNetworks()$full, file, format = "graphml")
+            igraph::write_graph(qualtricsNetworks()$full.directed, file, format = "graphml")
         }
     )
 }
