@@ -132,6 +132,28 @@ set_node_color <- function(metric, gd) {
 }
 
 ############################################################
+##### network export
+
+report.factory <- function(file, ga, gs, node) {
+    # Copy the report file to a temporary directory before processing it, in
+    # case we don't have write permissions to the current working dir (which
+    # can happen when deployed).
+    tempReport <- file.path(tempdir(), "report.Rmd")
+    file.copy("report.Rmd", tempReport, overwrite = TRUE)
+
+    # Set up parameters to pass to Rmd document
+    params <- list(ga = ga, gs = gs, node = node)
+
+    # Knit the document, passing in the `params` list, and eval it in a
+    # child of the global environment (this isolates the code in the document
+    # from the code in this app).
+    rmarkdown::render(tempReport, output_file = file,
+                      params = params,
+                      envir = new.env(parent = globalenv())
+    )
+}
+
+############################################################
 ##### SERVER
 
 server <- function(input, output, session) {
@@ -171,6 +193,7 @@ server <- function(input, output, session) {
         visNetwork(nodes = g$nodes, edges = g$edges) %>%
             visNodes(size = kNodeSizeBase,
                      borderWidth = 2,
+                     font = list(strokeWidth = 4),
                      color = list(border = "white", highlight = list(border = "white"))) %>%
             visEdges(color = "#aaa") %>%
             #visOptions(nodesIdSelection = list(enabled = TRUE)) %>%
@@ -237,6 +260,36 @@ server <- function(input, output, session) {
             igraph::write_graph(qualtricsNetworks()$full.directed, file, format = "graphml")
         }
     )
+
+    output$report <- downloadHandler(
+        filename = "reports.zip",
+        #filename = "reports.html",
+        content = function(file) {
+            ns <- qualtricsNetworks()
+            nvs <- length(V(ns$full.directed))
+            #nvs <- min(nvs, 3)
+            # extract advice and support networks
+            ga <- ns$advice.directed
+            ga <- add_layout_(ga, with_dh())
+            gs <- ns$support.directed
+            gs <- add_layout_(gs, with_dh())
+            # create file paths
+            paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
+            withProgress(message = 'Generating reports',
+                         value = 0,
+                         detail = paste(0, '/', nvs), 
+                {
+                    for(i in 1:nvs) {
+                        report.factory(paths[[i]], ga = ga, gs = gs, node = i)
+                        #print(ns$full.directed)
+                        incProgress(1/nvs, detail = paste(i, "/", nvs))
+                    }
+                })
+            zip::zip(file, files = paths, mode = 'cherry-pick')
+            #file.copy(paths[[1]], file)
+            #file.copy(paths[[27]], file)
+        }
+    )
 }
 
 ############################################################
@@ -274,13 +327,18 @@ ui <- fluidPage(
                                  checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
                                  choiceNames = c('Highlight consenters', 'Reveal names'),
                                  choiceValues = c('highlight', 'reveal')),
+            hr(),
+            tagList(
+                p('Generate reports'),
+                downloadButton("report", label = "Download"),
+            ),
             NULL
         ),
 
         mainPanel(
             visNetworkOutput("network", height="600px"),
-            tableOutput('selcoltable'),
-            tableOutput('selcoltable2'),
+            #tableOutput('selcoltable'),
+            #tableOutput('selcoltable2'),
             NULL
         )
     )

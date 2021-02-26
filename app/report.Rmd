@@ -1,0 +1,108 @@
+---
+title: "Network report"
+output: html_document
+params:
+        ga: NA
+        gs: NA
+        node: NA
+---
+
+```{r, echo = FALSE}
+library(igraph)
+library(ggplot2)
+library(cowplot)
+library(tidyverse)
+
+id <- as.character(params$node)
+
+color.pal <- function(pal = 'Greens', na.value = 0.5) {
+    # replace missing with default value? with gray?
+    function(x) {
+        x[is.na(x)] <- na.value
+        cr <- colorRamp(brewer.pal(9, pal), space='Lab')(x)
+        #cr[is.na(cr)] <- 170
+        rgb(cr[,1], cr[,2], cr[,3], maxColorValue = 255)
+    }
+}
+
+plottable.g <- function(g) {
+    #nbrs <- igraph::neighbors(g, params$node)
+    # set node colors, labels, size
+    V(g)$label <- ''
+    V(g)$color <- color.pal()(0.3)
+    V(g)$size <- 10
+    # set you
+    V(g)[name == id]$label <- 'You'
+    V(g)[name == id]$color <- color.pal()(0.5)
+    V(g)[name == id]$size <- 18
+    # set neighbors
+    V(g)[ .nei(id) ]$color <- color.pal()(0.5)
+    V(g)[ .nei(id) ]$size <- 14
+    g
+}
+
+g.stats <- function(g) {
+    dat <- igraph::as_data_frame(g, 'vertices') %>%
+        select(starts_with("centrality") | starts_with("name")) %>%
+        select(!c(centrality.outdegree, centrality.indegree)) %>%
+        rename(Eigenvector = centrality.eigen,
+               Closeness = centrality.close,
+               Betweenness = centrality.between) %>%
+        pivot_longer(!name, names_to = "centrality") %>%
+        group_by(centrality) %>%
+        mutate(pctile = rank(value) / n())
+    dat
+}
+
+netplot <- function(g) {
+    function() {
+        plot(g,
+             vertex.frame.color = 'white',
+             vertex.label.family = 'sans',
+             edge.color = '#aaaaaa',
+             edge.width = 0.5,
+             edge.curved = rep(0.25 * c(-1, 1), length.out = length(E(g))))
+    }
+}
+
+pctile.plot <- function(g) {
+    mp <- function(x) 0.5 * (max(x) + min(x))
+    df <- g.stats(g)
+    df.id <- df %>%
+        mutate(pctile.label = sprintf('%0.1f%%', 100 * pctile)) %>%
+        mutate(lab.h = ifelse(value < mp(value), -0.25, 1.25)) %>%
+        filter(name == id)
+    ggp <- df %>% ggplot(aes(value)) +
+        theme_void() +
+        theme(plot.margin = margin(0.3, 0, 0.3, 0, 'npc')) +
+        labs(x = NULL, y = NULL) +
+        facet_wrap(~centrality, ncol = 1, scales = 'free') +
+        geom_density(color = NA, fill = 'gray') +
+        geom_vline(data = df.id, aes(xintercept = value)) +
+        geom_text(data = df.id, aes(x = value, y = 0, label = pctile.label,
+                                    hjust = lab.h), vjust = -1) +
+        NULL
+    ggp
+}
+
+```
+
+Advice network:
+
+```{r, echo = FALSE}
+g <- plottable.g(params$ga)
+
+#ggdraw(netplot(g))
+plot_grid(netplot(g), pctile.plot(g), nrow = 1, rel_widths = c(3,1))
+```
+
+Social support network:
+
+```{r, echo = FALSE}
+g <- plottable.g(params$gs)
+
+#ggdraw(netplot(g))
+plot_grid(netplot(g), pctile.plot(g), nrow = 1, rel_widths = c(3,1))
+
+#g.stats(g)
+```

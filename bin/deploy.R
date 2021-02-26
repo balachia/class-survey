@@ -1,3 +1,4 @@
 #!/usr/bin/env Rscript
 
-rsconnect::deployApp('./app')
+rsconnect::deployApp('./app',
+                     appName = "ob2-survey")
