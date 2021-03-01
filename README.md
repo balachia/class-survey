@@ -3,7 +3,7 @@
 This package supports a class social network exercise through a Qualtrics survey
 file and an online visualization dashboard. The dashboard also generates
 individualized network reports. The latest version of the dashboard is available
-at [https://balachia.shinyapps.io/ob2-network].
+at https://balachia.shinyapps.io/ob2-survey.
 
 There are a few steps to get the network survey set up:
 
@@ -112,7 +112,7 @@ At this point, you should be ready to display the network data.
 ## Survey dashboard
 
 There are several ways to set up and use the network dashboard. The easiest is
-to use the version available at [https://balachia.shinyapps.io/ob2-survey]. You
+to use the version available at https://balachia.shinyapps.io/ob2-survey. You
 preview the dashboard by using sample results mimicking the Zachary Karate Club
 Network (`sample/ZKC Qualtrics.zip`).
 
