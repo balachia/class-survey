@@ -104,11 +104,13 @@ build_network_directions <- function(g, slug = 'g') {
 
 add_centralities <- function(g, g0) {
     # get centralities
+    # TODO: add `constraint` (Burt's constraint); `transitivity`
     V(g)$centrality.outdegree <- degree(g0, mode = 'in')
     V(g)$centrality.indegree <- degree(g0, mode = 'out')
     V(g)$centrality.close <- closeness(g)
     V(g)$centrality.between <- betweenness(g)
     V(g)$centrality.eigen <- eigen_centrality(g)$vector
+    V(g)$centrality.cluster <- transitivity(g, type = 'barrat', isolates = 'zero')
     g
 }
 
@@ -120,6 +122,7 @@ set_node_color <- function(metric, gd) {
                    close=rescale(gd$centrality.close),
                    indegree=rescale(gd$centrality.indegree),
                    outdegree=rescale(gd$centrality.outdegree),
+                   cluster=rescale(gd$centrality.cluster),
                    0)
     # restrict observed range to [0.5, 1]
     cent <- 0.5 + 0.5 * cent
@@ -190,7 +193,7 @@ server <- function(input, output, session) {
     output$network <- renderVisNetwork({
         g <- ntwk()
         g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
-        visNetwork(nodes = g$nodes, edges = g$edges) %>%
+        visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
             visNodes(size = kNodeSizeBase,
                      borderWidth = 2,
                      font = list(strokeWidth = 4),
@@ -317,8 +320,8 @@ ui <- fluidPage(
                               selected = '.directed'),
             radioGroupButtons('colorMetric',
                               'Color by',
-                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector'),
-                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen'),
+                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector', 'Cluster'),
+                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster'),
                               selected = kColorButtonDefault),
             checkboxGroupButtons('consenters',
                                  'Reveal names:',
