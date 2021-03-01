@@ -18,7 +18,8 @@ There are a few steps to get the network survey set up:
 
 ## Template files
 
-Before starting, download the [network survey files](./releases/latest) 
+Before starting, download the [network survey
+files](https://github.com/balachia/class-survey/releases/latest) 
 containing various templates for setting up the survey. The `survey` folder
 contains templates, and the `sample` folder contains sample results for the
 Zachary Karate Club network.
