@@ -400,8 +400,8 @@ ui <- fluidPage(
 
         mainPanel(
             visNetworkOutput("network", height="600px"),
-            tableOutput('selcoltable'),
-            tableOutput('selcoltable2'),
+            #tableOutput('selcoltable'),
+            #tableOutput('selcoltable2'),
             NULL
         )
     )
