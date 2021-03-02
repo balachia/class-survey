@@ -69,9 +69,10 @@ qualtrics_to_igraph <- function(df.qualtrics) {
     df.nodes <- data.frame(id = unique(df.net$alter)) %>%
         left_join(df.qualtrics, by = c('id' = 'NodeID')) %>%
         select(id, FullName, consent)
+    # add names, fixing missing nodes
     df.nodes <- df.nodes %>%
-        mutate(maybeLabel = ifelse(consent == kConsent, FullName, '???'),
-               bConsent = consent == kConsent) %>%
+        mutate(maybeLabel = ifelse((consent == kConsent) & !(is.na(consent)), FullName, '???'),
+               bConsent = (consent == kConsent) & !(is.na(consent))) %>%
         select(id, maybeLabel, bConsent) %>%
         rename(consent = bConsent)
     # build igraph
@@ -105,8 +106,8 @@ build_network_directions <- function(g, slug = 'g') {
 add_centralities <- function(g, g0) {
     # get centralities
     # TODO: add `constraint` (Burt's constraint); `transitivity`
-    V(g)$centrality.outdegree <- degree(g0, mode = 'in')
-    V(g)$centrality.indegree <- degree(g0, mode = 'out')
+    V(g)$centrality.outdegree <- degree(g0, mode = 'out')
+    V(g)$centrality.indegree <- degree(g0, mode = 'in')
     V(g)$centrality.close <- closeness(g)
     V(g)$centrality.between <- betweenness(g)
     V(g)$centrality.eigen <- eigen_centrality(g)$vector
@@ -133,6 +134,17 @@ set_node_color <- function(metric, gd) {
     gd$color.highlight.border <- color.pal()(cent)
     gd
 }
+
+# set node size by anonymity consent
+set_node_size <- function(consenters, gd) {
+    if('highlight' %in% consenters) {
+        gd$size <- ifelse(gd$consent, kNodeSizeBase, kNodeSizeReduced)
+    } else {
+        gd$size <- kNodeSizeBase
+    }
+    gd
+}
+
 
 ############################################################
 ##### network export
@@ -191,8 +203,12 @@ server <- function(input, output, session) {
     })
 
     output$network <- renderVisNetwork({
+        #qntwk <- qualtricsNetworks()
+        #g <- isolate(ntwk())
         g <- ntwk()
-        g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
+        #g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
+        g$nodes <- set_node_color(isolate(input$colorMetric), g$nodes)
+        g$nodes <- set_node_size(isolate(input$consenters), g$nodes)
         visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
             visNodes(size = kNodeSizeBase,
                      borderWidth = 2,
@@ -202,9 +218,22 @@ server <- function(input, output, session) {
             #visOptions(nodesIdSelection = list(enabled = TRUE)) %>%
             visEvents(selectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
             visEvents(deselectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
-            visEvents(type = 'once', afterDrawing = 'function(properties) { Shiny.setInputValue("actionRedraw", true, {"priority":"event"}); console.log("redraw"); console.log(properties) }') %>%
+            #visEvents(type = 'once', afterDrawing = 'function(properties) { Shiny.setInputValue("actionRedraw", true, {"priority":"event"}); console.log("redraw"); console.log(properties) }') %>%
+            #visPhysics(enabled = FALSE) %>%
             visExport()
     })
+
+    ## update network on mode/direction change
+    #observe({
+    #    g <- ntwk()
+    #    visNetworkProxy("network") %>%
+    #        visGetEdges()
+    #    edge.ids <- names(isolate(input$network_edges))
+    #    visNetworkProxy("network") %>%
+    #        visRemoveEdges(edge.ids) %>%
+    #        visUpdateNodes(g$nodes) %>%
+    #        visUpdateEdges(g$edges)
+    #})
 
     # display node's name: if it is selected and reveal name checkbox is enabled
     observe({
@@ -218,16 +247,28 @@ server <- function(input, output, session) {
             visUpdateNodes(g$nodes)
     })
 
-    # handle node sizes
-
     # update colors by centrality
     observe({
-        input$actionRedraw
+        #input$actionRedraw
         g <- ntwk()
         g$nodes <- set_node_color(input$colorMetric, g$nodes)
         # update nodes
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes)
+    })
+
+    # highlight revealable people with size
+    observe({
+        #input$actionRedraw
+        g <- ntwk()
+        g$nodes <- set_node_size(input$consenters, g$nodes)
+        visNetworkProxy("network") %>%
+            visUpdateNodes(g$nodes)
+    })
+
+    observeEvent(input$physics, {
+        visNetworkProxy("network") %>%
+            visStorePositions()
     })
 
     #output$selcol <- renderText({ input$inFile$type })
@@ -242,19 +283,6 @@ server <- function(input, output, session) {
             p('Download network data: '),
             downloadButton("downloadData", label = "Download")
         )
-    })
-
-    # highlight revealable people with size
-    observe({
-        input$actionRedraw
-        g <- ntwk()
-        if('highlight' %in% input$consenters) {
-            g$nodes$size <- ifelse(g$nodes$consent, kNodeSizeBase, kNodeSizeReduced)
-        } else {
-            g$nodes$size <- kNodeSizeBase
-        }
-        visNetworkProxy("network") %>%
-            visUpdateNodes(g$nodes)
     })
 
     output$downloadData <- downloadHandler(
@@ -335,6 +363,8 @@ ui <- fluidPage(
                 p('Generate reports'),
                 downloadButton("report", label = "Download"),
             ),
+            #hr(),
+            #actionButton("physics", label = "Physics"),
             NULL
         ),
 
