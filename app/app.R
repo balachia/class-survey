@@ -105,7 +105,7 @@ build_network_directions <- function(g, slug = 'g') {
 
 add_centralities <- function(g, g0) {
     # get centralities
-    # TODO: add `constraint` (Burt's constraint); `transitivity`
+    # TODO: add `constraint` (Burt's constraint)
     V(g)$centrality.outdegree <- degree(g0, mode = 'out')
     V(g)$centrality.indegree <- degree(g0, mode = 'in')
     V(g)$centrality.close <- closeness(g)
@@ -115,34 +115,60 @@ add_centralities <- function(g, g0) {
     g
 }
 
+# convert base network into a complete network with multiple types of edge weight
+build_edge_network <- function(g) {
+    ge <- as.undirected(g, mode = 'collapse', edge.attr.comb = sum)
+    # create ids
+    E(ge)$id <- 1:length(E(ge))
+    # advice network
+    E(ge)$advice.directed <- E(ge)$advice
+    E(ge)$advice.any      <- as.numeric(E(ge)$advice > 0)
+    E(ge)$advice.mutual   <- as.numeric(E(ge)$advice == 2)
+    # support network
+    E(ge)$support.directed <- E(ge)$support
+    E(ge)$support.any      <- as.numeric(E(ge)$support > 0)
+    E(ge)$support.mutual   <- as.numeric(E(ge)$support == 2)
+    # done
+    ge
+}
+
 # set node color by centrality metric
-set_node_color <- function(metric, gd) {
+set_node_color <- function(metric, g) {
     cent <- switch(metric,
-                   eigen=rescale(gd$centrality.eigen),
-                   between=rescale(gd$centrality.between),
-                   close=rescale(gd$centrality.close),
-                   indegree=rescale(gd$centrality.indegree),
-                   outdegree=rescale(gd$centrality.outdegree),
-                   cluster=rescale(gd$centrality.cluster),
+                   eigen=rescale(g$centrality.eigen),
+                   between=rescale(g$centrality.between),
+                   close=rescale(g$centrality.close),
+                   indegree=rescale(g$centrality.indegree),
+                   outdegree=rescale(g$centrality.outdegree),
+                   cluster=rescale(g$centrality.cluster),
                    0)
     # restrict observed range to [0.5, 1]
     cent <- 0.5 + 0.5 * cent
     # set colors
-    gd$color.background <- color.pal()(cent)
-    #gd$color.border <- color.pal()(cent)
-    gd$color.highlight.background <- color.pal()(cent)
-    gd$color.highlight.border <- color.pal()(cent)
-    gd
+    g$color.background <- color.pal()(cent)
+    #g$color.border <- color.pal()(cent)
+    g$color.highlight.background <- color.pal()(cent)
+    g$color.highlight.border <- color.pal()(cent)
+    g
 }
 
 # set node size by anonymity consent
-set_node_size <- function(consenters, gd) {
+set_node_size <- function(consenters, g) {
     if('highlight' %in% consenters) {
-        gd$size <- ifelse(gd$consent, kNodeSizeBase, kNodeSizeReduced)
+        g$size <- ifelse(g$consent, kNodeSizeBase, kNodeSizeReduced)
     } else {
-        gd$size <- kNodeSizeBase
+        g$size <- kNodeSizeBase
     }
-    gd
+    g
+}
+
+# set edge charactertistics by network type & direction
+set_edge_physics <- function(ge, networkType, networkDirection) {
+    edges <- edge.attributes(ge)[[paste0(networkType, networkDirection)]]
+    E(ge)$physics <- edges > 0
+    E(ge)$hidden <- edges == 0
+    E(ge)$width <- 2 * edges - 1
+    ge
 }
 
 
@@ -186,8 +212,10 @@ server <- function(input, output, session) {
             build_network_directions('advice')
         res.support <- subgraph.edges(g, which(E(g)$support), delete.vertices = FALSE) %>%
             build_network_directions('support')
+        # build full edges network
+        ge <- build_edge_network(g)
         # export networks
-        c(res.full, res.advice, res.support)
+        c(res.full, res.advice, res.support, list(edges = ge))
     })
 
     ntwk <- reactive({
@@ -195,17 +223,23 @@ server <- function(input, output, session) {
         # reset radio buttons
         #updateRadioGroupButtons(session, 'colorMetric', selected = kColorButtonDefault)
         #updateRadioGroupButtons(session, 'colorMetric', selected = kColorButtonDefault)
+        netType <- input$networkTie
+        netDir <- input$networkDirection
         # extract and augment correct network
-        g <- qntwk[[paste0(input$networkTie, input$networkDirection)]] %>%
-            add_layout_(with_fr()) %>%
+        g <- qntwk[[paste0(netType, netDir)]] %>%
+            #add_layout_(with_fr()) %>%
             toVisNetworkData(idToLabel = FALSE)
-        g
+        print(qntwk[["edges"]])
+        ge <- set_edge_physics(qntwk[["edges"]], netType, netDir) %>%
+            toVisNetworkData(idToLabel = FALSE)
+        #list(nodes = g, edges = ge)
+        list(nodes = g$nodes, edges = ge$edges)
     })
 
     output$network <- renderVisNetwork({
-        #qntwk <- qualtricsNetworks()
-        #g <- isolate(ntwk())
-        g <- ntwk()
+        qntwk <- qualtricsNetworks()
+        g <- isolate(ntwk())
+        #g <- ntwk()
         #g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
         g$nodes <- set_node_color(isolate(input$colorMetric), g$nodes)
         g$nodes <- set_node_size(isolate(input$consenters), g$nodes)
@@ -223,17 +257,13 @@ server <- function(input, output, session) {
             visExport()
     })
 
-    ## update network on mode/direction change
-    #observe({
-    #    g <- ntwk()
-    #    visNetworkProxy("network") %>%
-    #        visGetEdges()
-    #    edge.ids <- names(isolate(input$network_edges))
-    #    visNetworkProxy("network") %>%
-    #        visRemoveEdges(edge.ids) %>%
-    #        visUpdateNodes(g$nodes) %>%
-    #        visUpdateEdges(g$edges)
-    #})
+    # update network on mode/direction change
+    observe({
+        g <- ntwk()
+        visNetworkProxy("network") %>%
+            visUpdateNodes(g$nodes) %>%
+            visUpdateEdges(g$edges)
+    })
 
     # display node's name: if it is selected and reveal name checkbox is enabled
     observe({
@@ -370,8 +400,8 @@ ui <- fluidPage(
 
         mainPanel(
             visNetworkOutput("network", height="600px"),
-            #tableOutput('selcoltable'),
-            #tableOutput('selcoltable2'),
+            tableOutput('selcoltable'),
+            tableOutput('selcoltable2'),
             NULL
         )
     )
