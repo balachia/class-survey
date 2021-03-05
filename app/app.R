@@ -19,13 +19,15 @@ kNetworkSupport <- 'Support'
 kConsent <- 'I agree'
 kNodeSizeBase <- 18
 kNodeSizeReduced <- 12
+kCentralityMinColor <- 0.2
+kLabelFontSize <- 24
 
 ############################################################
 ##### utility functions
 
 rescale <- function(x, minimum = 0, maximum = 1) { minimum + (maximum - minimum) * (x-min(x))/(max(x)-min(x)) }
 
-color.pal <- function(pal = 'Greens', na.value = 0.5) {
+color.pal <- function(pal = 'YlGn', na.value = 0.5) {
     # replace missing with default value? with gray?
     function(x) {
         x[is.na(x)] <- na.value
@@ -141,9 +143,9 @@ set_node_color <- function(metric, g) {
                    indegree=rescale(g$centrality.indegree),
                    outdegree=rescale(g$centrality.outdegree),
                    cluster=rescale(g$centrality.cluster),
-                   0)
+                   0.5)
     # restrict observed range to [0.5, 1]
-    cent <- 0.5 + 0.5 * cent
+    cent <- kCentralityMinColor + (1 - kCentralityMinColor) * cent
     # set colors
     g$color.background <- color.pal()(cent)
     #g$color.border <- color.pal()(cent)
@@ -246,7 +248,7 @@ server <- function(input, output, session) {
         visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
             visNodes(size = kNodeSizeBase,
                      borderWidth = 2,
-                     font = list(strokeWidth = 4),
+                     font = list(strokeWidth = 5, size = kLabelFontSize),
                      color = list(border = "white", highlight = list(border = "white"))) %>%
             visEdges(color = "#aaa") %>%
             #visOptions(nodesIdSelection = list(enabled = TRUE)) %>%
@@ -260,6 +262,10 @@ server <- function(input, output, session) {
     # update network on mode/direction change
     observe({
         g <- ntwk()
+        #visNetworkProxy("network") %>%
+        #    visUpdateNodes(g$nodes) %>%
+        #    visUpdateEdges(g$edges) %>%
+        #    visPhysics(enabled = FALSE)
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes) %>%
             visUpdateEdges(g$edges)
@@ -298,8 +304,13 @@ server <- function(input, output, session) {
 
     observeEvent(input$physics, {
         visNetworkProxy("network") %>%
-            visStorePositions()
+            visPhysics(enabled = TRUE)
     })
+
+    #observe({
+    #    visNetworkProxy("network") %>%
+    #        visPhysics(enabled = input$physics)
+    #})
 
     #output$selcol <- renderText({ input$inFile$type })
 
@@ -395,6 +406,10 @@ ui <- fluidPage(
             ),
             #hr(),
             #actionButton("physics", label = "Physics"),
+            #tagList(
+            #        span("Physics"),
+            #        switchInput("physics")
+            #        ),
             NULL
         ),
 
