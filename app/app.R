@@ -13,6 +13,9 @@ options(shiny.reactlog=TRUE)
 ############################################################
 ##### CONSTANTS
 
+kQuestionSudo <- 'pseudonym'
+kQuestionConsent <- 'consent'
+kQuestionNetwork <- 'network'
 kColorButtonDefault <- 'None'
 kNetworkAdvice <- 'Advice'
 kNetworkSupport <- 'Support'
@@ -56,9 +59,10 @@ load_qualtrics_file <- function(file_qualtrics) {
 qualtrics_to_igraph <- function(df.qualtrics) {
     df.qualtrics <- df.qualtrics %>% mutate(ego = NodeID)
     # extract and longen network data
+    net.prefix <- paste0(kQuestionNetwork, '_')
     df.net <- df.qualtrics %>%
-        pivot_longer(cols = starts_with('network_'),
-                     names_prefix = 'network_',
+        pivot_longer(cols = starts_with(net.prefix),
+                     names_prefix = net.prefix,
                      names_to = 'alter') %>%
         mutate(alter = as.numeric(alter))
     # extract networks
@@ -67,15 +71,21 @@ qualtrics_to_igraph <- function(df.qualtrics) {
     # drop self-ties
     df.net <- df.net %>%
         filter(ego != alter)
+    # fix pseudonyms
+    if(!(kQuestionSudo %in% colnames(df.qualtrics))) {
+        df.qualtrics <- df.qualtrics %>%
+            mutate("{kQuestionSudo}" := "")
+    }
     # TODO: extract node characteristics
     df.nodes <- data.frame(id = unique(df.net$alter)) %>%
         left_join(df.qualtrics, by = c('id' = 'NodeID')) %>%
-        select(id, FullName, consent)
+        rename(consent = all_of(kQuestionConsent), sudo = all_of(kQuestionSudo)) %>%
+        select(id, FullName, consent, sudo)
     # add names, fixing missing nodes
     df.nodes <- df.nodes %>%
         mutate(maybeLabel = ifelse((consent == kConsent) & !(is.na(consent)), FullName, '???'),
                bConsent = (consent == kConsent) & !(is.na(consent))) %>%
-        select(id, maybeLabel, bConsent) %>%
+        select(id, maybeLabel, bConsent, sudo) %>%
         rename(consent = bConsent)
     # build igraph
     ntwk <- df.net %>%
@@ -274,7 +284,10 @@ server <- function(input, output, session) {
     # display node's name: if it is selected and reveal name checkbox is enabled
     observe({
         g <- ntwk()
-        if(!is.null(input$selectedNodes) && ('reveal' %in% input$consenters)) {
+        # show pseudonym or real name
+        if(!is.null(input$pseudonyms) && ('sudos' %in% input$pseudonyms)) {
+            g$nodes$label <- g$nodes$sudo
+        } else if(!is.null(input$selectedNodes) && ('reveal' %in% input$consenters)) {
             g$nodes$label <- ifelse(g$nodes$id == input$selectedNodes, g$nodes$maybeLabel, '')
         } else {
             g$nodes$label <- ''
@@ -393,12 +406,19 @@ ui <- fluidPage(
                               choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster'),
                               selected = kColorButtonDefault),
             checkboxGroupButtons('consenters',
-                                 'Reveal names:',
+                                 'Real names:',
                                  justified = TRUE,
                                  #status = 'info',
                                  checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
-                                 choiceNames = c('Highlight consenters', 'Reveal names'),
+                                 choiceNames = c('Highlight consenters', 'Reveal selected'),
                                  choiceValues = c('highlight', 'reveal')),
+            checkboxGroupButtons('pseudonyms',
+                                 'Pseudonyms:',
+                                 justified = TRUE,
+                                 #status = 'info',
+                                 checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
+                                 choiceNames = c('Show pseudonyms'),
+                                 choiceValues = c('sudos')),
             hr(),
             tagList(
                 p('Generate reports'),
@@ -414,7 +434,7 @@ ui <- fluidPage(
         ),
 
         mainPanel(
-            visNetworkOutput("network", height="600px"),
+            visNetworkOutput("network", height="100vh"),
             #tableOutput('selcoltable'),
             #tableOutput('selcoltable2'),
             NULL
