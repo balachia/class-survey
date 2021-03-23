@@ -72,11 +72,10 @@ write Statement 1"), then *PASTE* the list into this field.
 ![](./guide/qs003.png)
 
 This will fill in the network roster. Click out of the text entry field, and
-make sure that the list of students looks correct.
+make sure that the list of students looks correct. Finally, click *"Publish"* to
+finalize and save the survey.
 
 ![](./guide/qs004.png)
-
-Finally, click "Publish" to finalize and save the survey.
 
 *Notes*:
 
