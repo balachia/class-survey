@@ -58,8 +58,8 @@ Verify that the preview contains the `NodeID`, `Email`, and `FullName` fields.
 In your Qualtrics account, use the survey template (`survey/Network_Survey.qsf`)
 to create a new survey (Projects > Create New Project > Survey > From File).
 
-Upload the survey template file, then rename the survey to something meaningful
-(e.g. "Network Survey - Section A#"). Finally, click "Get Started" to create the
+Rename the survey to something meaningful (e.g. "Network Survey - Section A#"),
+then upload the survey template file. Finally, click "Get Started" to create the
 survey.
 
 ![](./guide/qs002.png)
