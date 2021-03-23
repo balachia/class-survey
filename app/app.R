@@ -13,6 +13,8 @@ options(shiny.reactlog=TRUE)
 ############################################################
 ##### CONSTANTS
 
+kQuestionConsent <- 'consent'
+kQuestionNetwork <- 'network'
 kColorButtonDefault <- 'None'
 kNetworkAdvice <- 'Advice'
 kNetworkSupport <- 'Support'
@@ -56,9 +58,10 @@ load_qualtrics_file <- function(file_qualtrics) {
 qualtrics_to_igraph <- function(df.qualtrics) {
     df.qualtrics <- df.qualtrics %>% mutate(ego = NodeID)
     # extract and longen network data
+    net.prefix <- paste0(kQuestionNetwork, '_')
     df.net <- df.qualtrics %>%
-        pivot_longer(cols = starts_with('network_'),
-                     names_prefix = 'network_',
+        pivot_longer(cols = starts_with(net.prefix),
+                     names_prefix = net.prefix,
                      names_to = 'alter') %>%
         mutate(alter = as.numeric(alter))
     # extract networks
@@ -393,11 +396,11 @@ ui <- fluidPage(
                               choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster'),
                               selected = kColorButtonDefault),
             checkboxGroupButtons('consenters',
-                                 'Reveal names:',
+                                 'Real names:',
                                  justified = TRUE,
                                  #status = 'info',
                                  checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
-                                 choiceNames = c('Highlight consenters', 'Reveal names'),
+                                 choiceNames = c('Highlight consenters', 'Reveal selected'),
                                  choiceValues = c('highlight', 'reveal')),
             hr(),
             tagList(
@@ -414,7 +417,7 @@ ui <- fluidPage(
         ),
 
         mainPanel(
-            visNetworkOutput("network", height="600px"),
+            visNetworkOutput("network", height="100vh"),
             #tableOutput('selcoltable'),
             #tableOutput('selcoltable2'),
             NULL
