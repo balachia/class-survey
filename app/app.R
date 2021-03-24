@@ -13,6 +13,7 @@ options(shiny.reactlog=TRUE)
 ############################################################
 ##### CONSTANTS
 
+kQuestionSudo <- 'pseudonym'
 kQuestionConsent <- 'consent'
 kQuestionNetwork <- 'network'
 kColorButtonDefault <- 'None'
@@ -70,15 +71,21 @@ qualtrics_to_igraph <- function(df.qualtrics) {
     # drop self-ties
     df.net <- df.net %>%
         filter(ego != alter)
+    # fix pseudonyms
+    if(!(kQuestionSudo %in% colnames(df.qualtrics))) {
+        df.qualtrics <- df.qualtrics %>%
+            mutate("{kQuestionSudo}" := "")
+    }
     # TODO: extract node characteristics
     df.nodes <- data.frame(id = unique(df.net$alter)) %>%
         left_join(df.qualtrics, by = c('id' = 'NodeID')) %>%
-        select(id, FullName, consent)
+        rename(consent = all_of(kQuestionConsent), sudo = all_of(kQuestionSudo)) %>%
+        select(id, FullName, consent, sudo)
     # add names, fixing missing nodes
     df.nodes <- df.nodes %>%
         mutate(maybeLabel = ifelse((consent == kConsent) & !(is.na(consent)), FullName, '???'),
                bConsent = (consent == kConsent) & !(is.na(consent))) %>%
-        select(id, maybeLabel, bConsent) %>%
+        select(id, maybeLabel, bConsent, sudo) %>%
         rename(consent = bConsent)
     # build igraph
     ntwk <- df.net %>%
@@ -277,7 +284,10 @@ server <- function(input, output, session) {
     # display node's name: if it is selected and reveal name checkbox is enabled
     observe({
         g <- ntwk()
-        if(!is.null(input$selectedNodes) && ('reveal' %in% input$consenters)) {
+        # show pseudonym or real name
+        if(!is.null(input$pseudonyms) && ('sudos' %in% input$pseudonyms)) {
+            g$nodes$label <- g$nodes$sudo
+        } else if(!is.null(input$selectedNodes) && ('reveal' %in% input$consenters)) {
             g$nodes$label <- ifelse(g$nodes$id == input$selectedNodes, g$nodes$maybeLabel, '')
         } else {
             g$nodes$label <- ''
@@ -402,6 +412,13 @@ ui <- fluidPage(
                                  checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
                                  choiceNames = c('Highlight consenters', 'Reveal selected'),
                                  choiceValues = c('highlight', 'reveal')),
+            checkboxGroupButtons('pseudonyms',
+                                 'Pseudonyms:',
+                                 justified = TRUE,
+                                 #status = 'info',
+                                 checkIcon = list(yes = icon("ok", lib = "glyphicon"), no = icon("remove", lib = "glyphicon")),
+                                 choiceNames = c('Show pseudonyms'),
+                                 choiceValues = c('sudos')),
             hr(),
             tagList(
                 p('Generate reports'),
