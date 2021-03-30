@@ -20,8 +20,8 @@ kColorButtonDefault <- 'None'
 kNetworkAdvice <- 'Advice'
 kNetworkSupport <- 'Support'
 kConsent <- 'I agree'
-kNodeSizeBase <- 18
-kNodeSizeReduced <- 12
+kNodeSizeBase <- 20
+kNodeSizeReduced <- 0.5
 kCentralityMinColor <- 0.2
 kLabelFontSize <- 24
 
@@ -120,10 +120,18 @@ add_centralities <- function(g, g0) {
     # TODO: add `constraint` (Burt's constraint)
     V(g)$centrality.outdegree <- degree(g0, mode = 'out')
     V(g)$centrality.indegree <- degree(g0, mode = 'in')
-    V(g)$centrality.close <- closeness(g)
-    V(g)$centrality.between <- betweenness(g)
-    V(g)$centrality.eigen <- eigen_centrality(g)$vector
-    V(g)$centrality.cluster <- transitivity(g, type = 'barrat', isolates = 'zero')
+    #suppressWarnings({
+    #    V(g)$centrality.close <- closeness(g)
+    #})
+    #V(g)$centrality.between <- betweenness(g)
+    #V(g)$centrality.eigen <- eigen_centrality(g)$vector
+    #V(g)$centrality.cluster <- transitivity(g, type = 'barrat', isolates = 'zero')
+    suppressWarnings({
+        V(g)$centrality.close <- closeness(g0, mode = 'in')
+    })
+    V(g)$centrality.between <- betweenness(g0)
+    V(g)$centrality.eigen <- eigen_centrality(g0, directed = TRUE)$vector
+    V(g)$centrality.cluster <- transitivity(g0, type = 'barrat', isolates = 'zero')
     g
 }
 
@@ -165,11 +173,11 @@ set_node_color <- function(metric, g) {
 }
 
 # set node size by anonymity consent
-set_node_size <- function(consenters, g) {
+set_node_size <- function(consenters, g, nodeSizeBase = kNodeSizeBase) {
     if('highlight' %in% consenters) {
-        g$size <- ifelse(g$consent, kNodeSizeBase, kNodeSizeReduced)
+        g$size <- nodeSizeBase * ifelse(g$consent, 1, kNodeSizeReduced)
     } else {
-        g$size <- kNodeSizeBase
+        g$size <- nodeSizeBase
     }
     g
 }
@@ -241,7 +249,7 @@ server <- function(input, output, session) {
         g <- qntwk[[paste0(netType, netDir)]] %>%
             #add_layout_(with_fr()) %>%
             toVisNetworkData(idToLabel = FALSE)
-        print(qntwk[["edges"]])
+        #print(qntwk[["edges"]])
         ge <- set_edge_physics(qntwk[["edges"]], netType, netDir) %>%
             toVisNetworkData(idToLabel = FALSE)
         #list(nodes = g, edges = ge)
@@ -264,18 +272,17 @@ server <- function(input, output, session) {
             #visOptions(nodesIdSelection = list(enabled = TRUE)) %>%
             visEvents(selectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
             visEvents(deselectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
-            #visEvents(type = 'once', afterDrawing = 'function(properties) { Shiny.setInputValue("actionRedraw", true, {"priority":"event"}); console.log("redraw"); console.log(properties) }') %>%
-            #visPhysics(enabled = FALSE) %>%
+            visEvents(stabilized = 'function(properties) { Shiny.setInputValue("actionStabilized", true, {"priority":"event"}); console.log("first stabilized"); console.log(properties) }') %>%
+            visPhysics(solver = "barnesHut",
+                       maxVelocity = 16,
+                       barnesHut = list(gravitationalConstant = -10000, centralGravity = 3, damping = 0.09),
+                       stabilization = list(iterations = 1000, fit = TRUE)) %>%
             visExport()
     })
 
     # update network on mode/direction change
     observe({
         g <- ntwk()
-        #visNetworkProxy("network") %>%
-        #    visUpdateNodes(g$nodes) %>%
-        #    visUpdateEdges(g$edges) %>%
-        #    visPhysics(enabled = FALSE)
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes) %>%
             visUpdateEdges(g$edges)
@@ -284,6 +291,8 @@ server <- function(input, output, session) {
     # display node's name: if it is selected and reveal name checkbox is enabled
     observe({
         g <- ntwk()
+        # set all label font sizes
+        g$nodes$font.size <- derivedSizeBases()$label
         # show pseudonym or real name
         if(!is.null(input$pseudonyms) && ('sudos' %in% input$pseudonyms)) {
             g$nodes$label <- g$nodes$sudo
@@ -310,26 +319,75 @@ server <- function(input, output, session) {
     observe({
         #input$actionRedraw
         g <- ntwk()
-        g$nodes <- set_node_size(input$consenters, g$nodes)
+        g$nodes <- set_node_size(input$consenters, g$nodes, derivedSizeBases()$node)
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes)
     })
 
-    observeEvent(input$physics, {
+    #observeEvent(input$physics, {
+    #    visNetworkProxy("network") %>%
+    #        visPhysics(enabled = TRUE)
+    #})
+
+    # set various sizes after determining initial graph diameter
+    observeEvent(input$actionStabilized, {
         visNetworkProxy("network") %>%
-            visPhysics(enabled = TRUE)
+            #visFit(animation = list(duration = 2000)) %>%
+            visGetPositions()
     })
+
+    #observeEvent(ntwk(), {
+    #    visNetworkProxy("network") %>%
+    #        visGetPositions()
+    #})
+
+    #derivedNodeSizeBase <- reactive({
+    #    span <- function(x) { max(x) - min(x) }
+    #    pos <- (input$network_positions)
+    #    if(!is.null(pos)) {
+    #        span.x <- map_dbl(pos, 'x') %>%
+    #            span()
+    #        span.y <- map_dbl(pos, 'x') %>%
+    #            span()
+    #        kNodeSizeBase * (max(span.x, span.y) / 1000)
+    #    } else {
+    #        kNodeSizeBase
+    #    }
+    #})
+
+    derivedSizeBases <- reactive({
+        span <- function(x) { max(x) - min(x) }
+        pos <- (input$network_positions)
+        if(!is.null(pos)) {
+            span.x <- map_dbl(pos, 'x') %>%
+                span()
+            span.y <- map_dbl(pos, 'x') %>%
+                span()
+            nspan <- max(span.x, span.y) / 1000
+            list(node = kNodeSizeBase * nspan,
+                 label = kLabelFontSize * nspan,
+                 edge = 1)
+        } else {
+            list(node = kNodeSizeBase,
+                 label = kLabelFontSize,
+                 edge = 1)
+        }
+    })
+
 
     #observe({
     #    visNetworkProxy("network") %>%
-    #        visPhysics(enabled = input$physics)
+    #        visPhysics(solver = "barnesHut",
+    #                   #timestep = 0.1,
+    #                   maxVelocity = input$speed,
+    #                   barnesHut = list(gravitationalConstant = input$gravK, centralGravity = input$cgrav * input$gravK * (-0.3/2000), damping = 0.09),
+    #                   stabilization = list(iterations = 1000, fit = TRUE))
     #})
 
     #output$selcol <- renderText({ input$inFile$type })
 
-    output$selcoltable <- renderTable({ ntwk()$nodes })
-
-    output$selcoltable2 <- renderTable({ ntwk()$edges })
+    #output$selcoltable <- renderTable({ ntwk()$nodes })
+    #output$selcoltable2 <- renderTable({ ntwk()$edges })
 
     output$downloadUI <- renderUI({
         req(qualtricsNetworks())
@@ -371,8 +429,6 @@ server <- function(input, output, session) {
                     }
                 })
             zip::zip(file, files = paths, mode = 'cherry-pick')
-            #file.copy(paths[[1]], file)
-            #file.copy(paths[[27]], file)
         }
     )
 }
@@ -426,6 +482,9 @@ ui <- fluidPage(
             ),
             #hr(),
             #actionButton("physics", label = "Physics"),
+            #numericInput("gravK", label = "grav constant", value = -2000),
+            #numericInput("cgrav", label = "central grav", value = 1),
+            #numericInput("speed", label = "speed", value = 25),
             #tagList(
             #        span("Physics"),
             #        switchInput("physics")
