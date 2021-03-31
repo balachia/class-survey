@@ -3,11 +3,13 @@ library(shiny)
 library(shinyjs)
 library(shinyWidgets)
 library(igraph)
-#library(Rtsne)
 library(visNetwork)
 #library(qualtRics)
 library(RColorBrewer)
 library(networkSurveyBackend)
+library(ggplot2)
+library(cowplot)
+library(gridGraphics)
 
 options(shiny.reactlog=TRUE)
 
@@ -43,115 +45,6 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
 
 ############################################################
 ##### network setup
-
-# load qualtrics survey file (error checking, various formats) and return as dataframee
-#load_qualtrics_file <- function(file_qualtrics) {
-#    # TODO: is filetype checking robust??
-#    #   can maybe wrap everything in a tryCatch
-#    suppressMessages({
-#        fHandle <- file_qualtrics$datapath
-#        if(file_qualtrics$type == "application/zip") { fHandle <- unzip(fHandle) }
-#        df.qualtrics <- qualtRics::read_survey(fHandle)
-#    })
-#    df.qualtrics
-#}
-
-# convert survey dataframe into a comprehensive igraph network
-#qualtrics_to_igraph <- function(df.qualtrics) {
-#    df.qualtrics <- df.qualtrics %>% mutate(ego = NodeID)
-#    # extract and longen network data
-#    net.prefix <- paste0(kQuestionNetwork, '_')
-#    df.net <- df.qualtrics %>%
-#        pivot_longer(cols = starts_with(net.prefix),
-#                     names_prefix = net.prefix,
-#                     names_to = 'alter') %>%
-#        mutate(alter = as.numeric(alter))
-#    # extract networks
-#    df.net$advice <- grepl(kNetworkAdvice, df.net$value)
-#    df.net$support <- grepl(kNetworkSupport, df.net$value)
-#    # drop self-ties
-#    df.net <- df.net %>%
-#        filter(ego != alter)
-#    # fix pseudonyms
-#    if(!(kQuestionSudo %in% colnames(df.qualtrics))) {
-#        df.qualtrics <- df.qualtrics %>%
-#            mutate("{kQuestionSudo}" := "")
-#    }
-#    # TODO: extract node characteristics
-#    df.nodes <- data.frame(id = unique(df.net$alter)) %>%
-#        left_join(df.qualtrics, by = c('id' = 'NodeID')) %>%
-#        rename(consent = all_of(kQuestionConsent), sudo = all_of(kQuestionSudo)) %>%
-#        select(id, FullName, consent, sudo)
-#    # add names, fixing missing nodes
-#    df.nodes <- df.nodes %>%
-#        mutate(maybeLabel = ifelse((consent == kConsent) & !(is.na(consent)), FullName, '???'),
-#               bConsent = (consent == kConsent) & !(is.na(consent))) %>%
-#        select(id, maybeLabel, bConsent, sudo) %>%
-#        rename(consent = bConsent)
-#    # build igraph
-#    ntwk <- df.net %>%
-#        select(ego, alter, advice, support) %>%
-#        graph_from_data_frame(directed = TRUE, vertices = df.nodes)
-#    E(ntwk)$width <- 1
-#    ntwk
-#}
-
-## extract directional and valenced networks from master igraph
-#build_network_directions <- function(g, slug = 'g') {
-#    # "directed" networks (preserving weight)
-#    g.d <- as.undirected(g, 'collapse', edge.attr.comb = 'sum') %>%
-#        add_centralities(g)
-#    # undirected networks
-#    g.mc <- as.undirected(g, 'collapse') %>%
-#        add_centralities(g)
-#    g.mm <- as.undirected(g, 'mutual') %>%
-#        add_centralities(g)
-#    # reset widths
-#    E(g.d)$width <- 2 * E(g.d)$width - 1
-#    E(g.mc)$width <- 1
-#    E(g.mm)$width <- 1
-#    # export
-#    res <- list(g.d, g.mc, g.mm)
-#    names(res) <- paste0(slug, c('.directed', '.any', '.mutual'))
-#    res
-#}
-
-#add_centralities <- function(g, g0) {
-#    # get centralities
-#    # TODO: add `constraint` (Burt's constraint)
-#    V(g)$centrality.outdegree <- degree(g0, mode = 'out')
-#    V(g)$centrality.indegree <- degree(g0, mode = 'in')
-#    #suppressWarnings({
-#    #    V(g)$centrality.close <- closeness(g)
-#    #})
-#    #V(g)$centrality.between <- betweenness(g)
-#    #V(g)$centrality.eigen <- eigen_centrality(g)$vector
-#    #V(g)$centrality.cluster <- transitivity(g, type = 'barrat', isolates = 'zero')
-#    suppressWarnings({
-#        V(g)$centrality.close <- closeness(g0, mode = 'in')
-#    })
-#    V(g)$centrality.between <- betweenness(g0)
-#    V(g)$centrality.eigen <- eigen_centrality(g0, directed = TRUE)$vector
-#    V(g)$centrality.cluster <- transitivity(g0, type = 'barrat', isolates = 'zero')
-#    g
-#}
-
-## convert base network into a complete network with multiple types of edge weight
-#build_edge_network <- function(g) {
-#    ge <- as.undirected(g, mode = 'collapse', edge.attr.comb = sum)
-#    # create ids
-#    E(ge)$id <- 1:length(E(ge))
-#    # advice network
-#    E(ge)$advice.directed <- E(ge)$advice
-#    E(ge)$advice.any      <- as.numeric(E(ge)$advice > 0)
-#    E(ge)$advice.mutual   <- as.numeric(E(ge)$advice == 2)
-#    # support network
-#    E(ge)$support.directed <- E(ge)$support
-#    E(ge)$support.any      <- as.numeric(E(ge)$support > 0)
-#    E(ge)$support.mutual   <- as.numeric(E(ge)$support == 2)
-#    # done
-#    ge
-#}
 
 # set node color by centrality metric
 set_node_color <- function(metric, g) {
@@ -199,15 +92,87 @@ set_edge_physics <- function(ge, networkType, networkDirection, width.weight = 1
 ############################################################
 ##### network export
 
-report.factory <- function(file, ga, gs, node) {
+plottable.g <- function(g, vid) {
+    #nbrs <- igraph::neighbors(g, params$node)
+    # set node colors, labels, size
+    V(g)$label <- ''
+    V(g)$color <- color.pal()(0.3)
+    V(g)$size <- 9
+    # set you
+    V(g)[name == vid]$label <- 'You'
+    V(g)[name == vid]$color <- color.pal()(0.6)
+    V(g)[name == vid]$size <- 18
+    # set outgoing neighbors
+    V(g)[ .outnei(vid) ]$color <- color.pal()(0.4)
+    V(g)[ .outnei(vid) ]$size <- 12
+    # set neighbors
+    V(g)[ .innei(vid) ]$color <- color.pal()(0.5)
+    V(g)[ .innei(vid) ]$size <- 14
+    g
+}
+
+g.stats <- function(g) {
+    dat <- igraph::as_data_frame(g, 'vertices') %>%
+        select(starts_with("centrality") | starts_with("name")) %>%
+        select(!c(centrality.outdegree, centrality.indegree)) %>%
+        rename(Eigenvector = centrality.eigen,
+               Closeness = centrality.close,
+               Betweenness = centrality.between,
+               Cluster = centrality.cluster) %>%
+        pivot_longer(!name, names_to = "centrality") %>%
+        group_by(centrality) %>%
+        mutate(pctile = rank(value) / n())
+    dat
+}
+
+netplot <- function(g) {
+    function() {
+        par(mar=c(0,0,0,0), oma=c(0,0,0,0))
+        plot(g,
+             margin = 0,
+             frame = FALSE,
+             vertex.frame.color = 'white',
+             vertex.label.family = 'sans',
+             edge.color = '#aaaaaa',
+             edge.width = 0.5,
+             edge.curved = rep(0.00 * c(-1, 1), length.out = length(E(g))))
+    }
+}
+
+pctile.plot <- function(g, vid) {
+    mp <- function(x) 0.5 * (max(x) + min(x))
+    df <- g.stats(g)
+    df.id <- df %>%
+        mutate(pctile.label = sprintf('%0.1f%%', 100 * pctile)) %>%
+        mutate(lab.h = ifelse(value < mp(value), -0.25, 1.25)) %>%
+        filter(name == vid)
+    ggp <- df %>% ggplot(aes(value)) +
+        theme_void(base_size = 8) +
+        theme(plot.margin = margin(0.2, 0, 0.2, 0, 'npc'),
+              plot.title = element_text(margin = margin(0, 0, 0.1, 0, 'npc'))) +
+        labs(x = NULL, y = NULL, title = 'Network Scores') +
+        facet_wrap(~centrality, ncol = 1, scales = 'free') +
+        geom_density(color = NA, fill = 'gray') +
+        geom_vline(data = df.id, aes(xintercept = value)) +
+        geom_text(data = df.id, aes(x = value, y = 0, label = pctile.label,
+                                    hjust = lab.h), vjust = -1, size = 2.5) +
+        NULL
+    ggp
+}
+
+combined.plot <- function(g, vid) {
+    gp <- plottable.g(g, vid)
+    plot_grid(netplot(gp), pctile.plot(gp, vid), nrow = 1, rel_widths = c(3,1))
+    #plot_grid(netplot(gp), netplot(gp), nrow = 1, rel_widths = c(3,1))
+    #plot_grid(pctile.plot(gp, vid), pctile.plot(gp, vid), nrow = 1, rel_widths = c(3,1))
+}
+
+report.factory <- function(file, params, template = "report.Rmd") {
     # Copy the report file to a temporary directory before processing it, in
     # case we don't have write permissions to the current working dir (which
     # can happen when deployed).
     tempReport <- file.path(tempdir(), "report.Rmd")
-    file.copy("report.Rmd", tempReport, overwrite = TRUE)
-
-    # Set up parameters to pass to Rmd document
-    params <- list(ga = ga, gs = gs, node = node)
+    file.copy(template, tempReport, overwrite = TRUE)
 
     # Knit the document, passing in the `params` list, and eval it in a
     # child of the global environment (this isolates the code in the document
@@ -222,26 +187,6 @@ report.factory <- function(file, ga, gs, node) {
 ##### SERVER
 
 server <- function(input, output, session) {
-    #qualtricsNetworks <- reactive({
-    #    # load network
-    #    req(input$inFile)
-    #    df.qualtrics <- load_qualtrics_file(input$inFile)
-    #    # convert to igraph
-    #    g <- qualtrics_to_igraph(df.qualtrics)
-    #    # TODO: build centralities and layouts here?
-    #    # build networks: full, advice, support
-    #    res.full <- subgraph.edges(g, which(E(g)$advice | E(g)$support), delete.vertices = FALSE) %>%
-    #        build_network_directions('full')
-    #    res.advice <- subgraph.edges(g, which(E(g)$advice), delete.vertices = FALSE) %>%
-    #        build_network_directions('advice')
-    #    res.support <- subgraph.edges(g, which(E(g)$support), delete.vertices = FALSE) %>%
-    #        build_network_directions('support')
-    #    # build full edges network
-    #    ge <- build_edge_network(g)
-    #    # export networks
-    #    c(res.full, res.advice, res.support, list(edges = ge))
-    #})
-
     qualtricsNetworks <- reactive({
         # load network
         req(input$inFile)
@@ -258,6 +203,7 @@ server <- function(input, output, session) {
             networkSurveyBackend::build_network_directions('advice')
         res.support <- subgraph.edges(g, which(E(g)$support), delete.vertices = FALSE) %>%
             networkSurveyBackend::build_network_directions('support')
+        # add layouts
         # build full edges network
         ge <- build_edge_network(g)
         # export networks
@@ -267,26 +213,19 @@ server <- function(input, output, session) {
     ntwk <- reactive({
         qntwk <- qualtricsNetworks()
         # reset radio buttons
-        #updateRadioGroupButtons(session, 'colorMetric', selected = kColorButtonDefault)
-        #updateRadioGroupButtons(session, 'colorMetric', selected = kColorButtonDefault)
         netType <- input$networkTie
         netDir <- input$networkDirection
         # extract and augment correct network
         g <- qntwk[[paste0(netType, netDir)]] %>%
-            #add_layout_(with_fr()) %>%
             toVisNetworkData(idToLabel = FALSE)
-        #print(qntwk[["edges"]])
         ge <- set_edge_physics(qntwk[["edges"]], netType, netDir, derivedSizeBases()$edge) %>%
             toVisNetworkData(idToLabel = FALSE)
-        #list(nodes = g, edges = ge)
         list(nodes = g$nodes, edges = ge$edges)
     })
 
     output$network <- renderVisNetwork({
         qntwk <- qualtricsNetworks()
         g <- isolate(ntwk())
-        #g <- ntwk()
-        #g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
         g$nodes <- set_node_color(isolate(input$colorMetric), g$nodes)
         g$nodes <- set_node_size(isolate(input$consenters), g$nodes)
         visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
@@ -299,10 +238,11 @@ server <- function(input, output, session) {
             visEvents(selectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
             visEvents(deselectNode = 'function(properties) { Shiny.setInputValue("selectedNodes", properties.nodes); console.log(properties) }') %>%
             visEvents(stabilized = 'function(properties) { Shiny.setInputValue("actionStabilized", true, {"priority":"event"}); console.log("first stabilized"); console.log(properties) }') %>%
-            visPhysics(solver = "barnesHut",
-                       maxVelocity = 16,
-                       barnesHut = list(gravitationalConstant = -10000, centralGravity = 3, damping = 0.09),
-                       stabilization = list(iterations = 1000, fit = TRUE)) %>%
+            visPhysics(enabled = FALSE) %>%
+            #visPhysics(solver = "barnesHut",
+            #           maxVelocity = 16,
+            #           barnesHut = list(gravitationalConstant = -10000, centralGravity = 3, damping = 0.09),
+            #           stabilization = list(iterations = 1000, fit = TRUE)) %>%
             visExport()
     })
 
@@ -350,36 +290,12 @@ server <- function(input, output, session) {
             visUpdateNodes(g$nodes)
     })
 
-    #observeEvent(input$physics, {
-    #    visNetworkProxy("network") %>%
-    #        visPhysics(enabled = TRUE)
-    #})
-
     # set various sizes after determining initial graph diameter
     observeEvent(input$actionStabilized, {
         visNetworkProxy("network") %>%
             #visFit(animation = list(duration = 2000)) %>%
             visGetPositions()
     })
-
-    #observeEvent(ntwk(), {
-    #    visNetworkProxy("network") %>%
-    #        visGetPositions()
-    #})
-
-    #derivedNodeSizeBase <- reactive({
-    #    span <- function(x) { max(x) - min(x) }
-    #    pos <- (input$network_positions)
-    #    if(!is.null(pos)) {
-    #        span.x <- map_dbl(pos, 'x') %>%
-    #            span()
-    #        span.y <- map_dbl(pos, 'x') %>%
-    #            span()
-    #        kNodeSizeBase * (max(span.x, span.y) / 1000)
-    #    } else {
-    #        kNodeSizeBase
-    #    }
-    #})
 
     derivedSizeBases <- reactive({
         span <- function(x) { max(x) - min(x) }
@@ -399,18 +315,6 @@ server <- function(input, output, session) {
                  edge = 1)
         }
     })
-
-
-    #observe({
-    #    visNetworkProxy("network") %>%
-    #        visPhysics(solver = "barnesHut",
-    #                   #timestep = 0.1,
-    #                   maxVelocity = input$speed,
-    #                   barnesHut = list(gravitationalConstant = input$gravK, centralGravity = input$cgrav * input$gravK * (-0.3/2000), damping = 0.09),
-    #                   stabilization = list(iterations = 1000, fit = TRUE))
-    #})
-
-    #output$selcol <- renderText({ input$inFile$type })
 
     #output$selcoltable <- renderTable({ ntwk()$nodes })
     #output$selcoltable2 <- renderTable({ ntwk()$edges })
@@ -434,27 +338,52 @@ server <- function(input, output, session) {
         filename = "reports.zip",
         #filename = "reports.html",
         content = function(file) {
+            # allow alternate template
+            templateFile <- isolate(input$reportFile)
+            if(is.null(templateFile)) {
+                template <- 'report.Rmd'
+            } else {
+                template <- templateFile$datapath
+            }
             ns <- qualtricsNetworks()
             nvs <- length(V(ns$full.directed))
-            #nvs <- min(nvs, 3)
             # extract advice and support networks
-            ga <- ns$advice.directed
-            ga <- add_layout_(ga, with_dh())
-            gs <- ns$support.directed
-            gs <- add_layout_(gs, with_dh())
+            ga <- ns$advice.any
+            gs <- ns$support.any
+            ga <- add_layout_(ga, with_fr())
+            gs <- add_layout_(gs, with_fr())
             # create file paths
-            paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
+            #paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
+            rootpath <- tempdir(TRUE)
+            dir.create(file.path(rootpath, 'reports/plot'), recursive = TRUE, showWarnings = FALSE)
+            #paths.a <- file.path(rootpath, sprintf('advice-%03d.png', 1:nvs))
+            #paths.s <- file.path(rootpath, sprintf('support-%03d.png', 1:nvs))
+            paths.a <- sprintf('reports/plot/advice-%03d.png', 1:nvs)
+            paths.s <- sprintf('reports/plot/support-%03d.png', 1:nvs)
+            paths.report <- sprintf('reports/report-%03d.html', 1:nvs)
+            fullpaths.a <- file.path(rootpath, paths.a)
+            fullpaths.s <- file.path(rootpath, paths.s)
             withProgress(message = 'Generating reports',
                          value = 0,
                          detail = paste(0, '/', nvs), 
                 {
                     for(i in 1:nvs) {
-                        report.factory(paths[[i]], ga = ga, gs = gs, node = i)
+                        ggp.a <- combined.plot(ga, i)
+                        ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
+                        ggp.s <- combined.plot(gs, i)
+                        ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
+                        params <- list(node = i,
+                                       plotAdvice = fullpaths.a[[i]],
+                                       plotSupport = fullpaths.s[[i]])
+                        #ggsave(paths.s[[i]], ggp.s)
+                        report.factory(paths.report[[i]], params, template = template)
                         #print(ns$full.directed)
                         incProgress(1/nvs, detail = paste(i, "/", nvs))
                     }
                 })
-            zip::zip(file, files = paths, mode = 'cherry-pick')
+            #mail.merge.df <- data.frame(NodeID = 1:nvs, advice = paths.a, support = paths.s)
+            #zip::zip(file, files = c(paths.a, paths.s), mode = 'cherry-pick')
+            zip::zip(file, files = c(paths.a, paths.s, paths.report), root = rootpath, mode = 'mirror')
         }
     )
 }
@@ -466,9 +395,10 @@ ui <- fluidPage(
     #shinyjs::useShinyjs(),
     sidebarLayout(
         sidebarPanel(
-            titlePanel('Section Network Map'),
+            titlePanel('Section Network Map Report Generator'),
             fileInput("inFile", "Upload Qualtrics file (zip/csv)", accept = c(".zip", ".csv")),
-            uiOutput("downloadUI"),
+            fileInput("reportFile", "Upload alternate report template (Rmd)", accept = c(".Rmd")),
+            #uiOutput("downloadUI"),
             hr(),
             radioGroupButtons('networkTie',
                               'Select network',
