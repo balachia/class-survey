@@ -355,14 +355,15 @@ server <- function(input, output, session) {
             # create file paths
             #paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
             rootpath <- tempdir(TRUE)
-            dir.create(file.path(rootpath, 'reports/plot'), recursive = TRUE, showWarnings = FALSE)
+            dir.create(file.path(rootpath, 'plot'), recursive = TRUE, showWarnings = FALSE)
             #paths.a <- file.path(rootpath, sprintf('advice-%03d.png', 1:nvs))
             #paths.s <- file.path(rootpath, sprintf('support-%03d.png', 1:nvs))
-            paths.a <- sprintf('reports/plot/advice-%03d.png', 1:nvs)
-            paths.s <- sprintf('reports/plot/support-%03d.png', 1:nvs)
-            paths.report <- sprintf('reports/report-%03d.html', 1:nvs)
+            paths.a <- sprintf('plot/advice-%03d.png', 1:nvs)
+            paths.s <- sprintf('plot/support-%03d.png', 1:nvs)
+            paths.report <- sprintf('report-%03d', 1:nvs)
             fullpaths.a <- file.path(rootpath, paths.a)
             fullpaths.s <- file.path(rootpath, paths.s)
+            final.paths.report <- character(nvs)
             withProgress(message = 'Generating reports',
                          value = 0,
                          detail = paste(0, '/', nvs), 
@@ -376,14 +377,17 @@ server <- function(input, output, session) {
                                        plotAdvice = fullpaths.a[[i]],
                                        plotSupport = fullpaths.s[[i]])
                         #ggsave(paths.s[[i]], ggp.s)
-                        report.factory(paths.report[[i]], params, template = template)
+                        final.paths.report[i] <- report.factory(paths.report[[i]], params, template = template)
                         #print(ns$full.directed)
                         incProgress(1/nvs, detail = paste(i, "/", nvs))
                     }
                 })
+            print(paths.report)
+            print(final.paths.report)
             #mail.merge.df <- data.frame(NodeID = 1:nvs, advice = paths.a, support = paths.s)
             #zip::zip(file, files = c(paths.a, paths.s), mode = 'cherry-pick')
-            zip::zip(file, files = c(paths.a, paths.s, paths.report), root = rootpath, mode = 'mirror')
+            zip::zip(file, files = c(paths.a, paths.s), root = rootpath, mode = 'mirror')
+            zip::zip_append(file, files = c(final.paths.report), mode = 'cherry-pick')
         }
     )
 }
