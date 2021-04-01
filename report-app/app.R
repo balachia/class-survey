@@ -183,6 +183,56 @@ report.factory <- function(file, params, template = "report.Rmd") {
     )
 }
 
+report.handler <- function(inputTemplate, networks, max.reports = NULL) {
+    function(file) {
+        # allow alternate template
+        if(is.null(inputTemplate)) {
+            template <- 'report.Rmd'
+        } else {
+            template <- inputTemplate$datapath
+        }
+        ns <- networks
+        nvs <- if(is.null(max.reports)) { length(V(ns$full.directed)) } else { 1 }
+        # extract advice and support networks
+        ga <- ns$advice.any
+        gs <- ns$support.any
+        ga <- add_layout_(ga, with_fr())
+        gs <- add_layout_(gs, with_fr())
+        # create file paths
+        rootpath <- tempdir(TRUE)
+        dir.create(file.path(rootpath, 'plot'), recursive = TRUE, showWarnings = FALSE)
+        # plot paths
+        paths.a <- sprintf('plot/advice-%03d.png', 1:nvs)
+        paths.s <- sprintf('plot/support-%03d.png', 1:nvs)
+        fullpaths.a <- file.path(rootpath, paths.a)
+        fullpaths.s <- file.path(rootpath, paths.s)
+        # report temporary and final paths
+        paths.report <- sprintf('report-%03d', 1:nvs)
+        final.paths.report <- character(nvs)
+        withProgress(message = 'Generating reports',
+                     value = 0,
+                     detail = paste(0, '/', nvs), 
+            {
+                for(i in 1:nvs) {
+                    ggp.a <- combined.plot(ga, i)
+                    ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
+                    ggp.s <- combined.plot(gs, i)
+                    ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
+                    # create parameters for report
+                    params <- list(node = networks$nodes[[i]],
+                                   plotAdvice = fullpaths.a[[i]],
+                                   plotSupport = fullpaths.s[[i]])
+                    print(networks$nodes)
+                    # get final report filepath
+                    final.paths.report[i] <- report.factory(paths.report[[i]], params, template = template)
+                    incProgress(1/nvs, detail = paste(i, "/", nvs))
+                }
+            })
+        zip::zip(file, files = c(paths.a, paths.s), root = rootpath, mode = 'mirror')
+        zip::zip_append(file, files = c(final.paths.report), mode = 'cherry-pick')
+    }
+}
+
 ############################################################
 ##### SERVER
 
@@ -190,7 +240,8 @@ server <- function(input, output, session) {
     qualtricsNetworks <- reactive({
         # load network
         req(input$inFile)
-        df.qualtrics <- networkSurveyBackend::load_qualtrics_file(input$inFile)
+        inputSurvey <- input$inFile
+        df.qualtrics <- networkSurveyBackend::load_qualtrics_file(inputSurvey)
         # convert to igraph
         g <- networkSurveyBackend::qualtrics_to_igraph(df.qualtrics,
                 qidNetwork = kQuestionNetwork, qidSudo = kQuestionSudo, qidConsent = kQuestionConsent,
@@ -203,11 +254,17 @@ server <- function(input, output, session) {
             networkSurveyBackend::build_network_directions('advice')
         res.support <- subgraph.edges(g, which(E(g)$support), delete.vertices = FALSE) %>%
             networkSurveyBackend::build_network_directions('support')
+        # extract node characteristics
+        nodes.fields <- c('NodeID', 'RecipientFirstName', 'RecipientLastName', 'RecipientEmail', 'FullName', kQuestionSudo, kQuestionConsent)
+        nodes.data <- data.frame(NodeID = 1:length(V(g))) %>%
+            left_join(select(df.qualtrics, one_of(nodes.fields)), by = 'NodeID') %>%
+            as.list() %>%
+            transpose()
         # add layouts
         # build full edges network
         ge <- build_edge_network(g)
         # export networks
-        c(res.full, res.advice, res.support, list(edges = ge))
+        c(res.full, res.advice, res.support, list(edges = ge, nodes = nodes.data))
     })
 
     ntwk <- reactive({
@@ -334,61 +391,72 @@ server <- function(input, output, session) {
         }
     )
 
+    #output$report <- downloadHandler(
+    #    filename = "reports.zip",
+    #    #filename = "reports.html",
+    #    content = function(file) {
+    #        # allow alternate template
+    #        templateFile <- isolate(input$reportFile)
+    #        if(is.null(templateFile)) {
+    #            template <- 'report.Rmd'
+    #        } else {
+    #            template <- templateFile$datapath
+    #        }
+    #        ns <- qualtricsNetworks()
+    #        nvs <- length(V(ns$full.directed))
+    #        # extract advice and support networks
+    #        ga <- ns$advice.any
+    #        gs <- ns$support.any
+    #        ga <- add_layout_(ga, with_fr())
+    #        gs <- add_layout_(gs, with_fr())
+    #        # create file paths
+    #        #paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
+    #        rootpath <- tempdir(TRUE)
+    #        dir.create(file.path(rootpath, 'plot'), recursive = TRUE, showWarnings = FALSE)
+    #        #paths.a <- file.path(rootpath, sprintf('advice-%03d.png', 1:nvs))
+    #        #paths.s <- file.path(rootpath, sprintf('support-%03d.png', 1:nvs))
+    #        paths.a <- sprintf('plot/advice-%03d.png', 1:nvs)
+    #        paths.s <- sprintf('plot/support-%03d.png', 1:nvs)
+    #        paths.report <- sprintf('report-%03d', 1:nvs)
+    #        fullpaths.a <- file.path(rootpath, paths.a)
+    #        fullpaths.s <- file.path(rootpath, paths.s)
+    #        final.paths.report <- character(nvs)
+    #        withProgress(message = 'Generating reports',
+    #                     value = 0,
+    #                     detail = paste(0, '/', nvs), 
+    #            {
+    #                for(i in 1:nvs) {
+    #                    ggp.a <- combined.plot(ga, i)
+    #                    ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
+    #                    ggp.s <- combined.plot(gs, i)
+    #                    ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
+    #                    params <- list(node = i,
+    #                                   plotAdvice = fullpaths.a[[i]],
+    #                                   plotSupport = fullpaths.s[[i]])
+    #                    #ggsave(paths.s[[i]], ggp.s)
+    #                    final.paths.report[i] <- report.factory(paths.report[[i]], params, template = template)
+    #                    #print(ns$full.directed)
+    #                    incProgress(1/nvs, detail = paste(i, "/", nvs))
+    #                }
+    #            })
+    #        print(paths.report)
+    #        print(final.paths.report)
+    #        #mail.merge.df <- data.frame(NodeID = 1:nvs, advice = paths.a, support = paths.s)
+    #        #zip::zip(file, files = c(paths.a, paths.s), mode = 'cherry-pick')
+    #        zip::zip(file, files = c(paths.a, paths.s), root = rootpath, mode = 'mirror')
+    #        zip::zip_append(file, files = c(final.paths.report), mode = 'cherry-pick')
+    #    }
+    #)
+
     output$report <- downloadHandler(
         filename = "reports.zip",
         #filename = "reports.html",
-        content = function(file) {
-            # allow alternate template
-            templateFile <- isolate(input$reportFile)
-            if(is.null(templateFile)) {
-                template <- 'report.Rmd'
-            } else {
-                template <- templateFile$datapath
-            }
-            ns <- qualtricsNetworks()
-            nvs <- length(V(ns$full.directed))
-            # extract advice and support networks
-            ga <- ns$advice.any
-            gs <- ns$support.any
-            ga <- add_layout_(ga, with_fr())
-            gs <- add_layout_(gs, with_fr())
-            # create file paths
-            #paths <- file.path(tempdir(), sprintf('report-%04d.html', 1:nvs))
-            rootpath <- tempdir(TRUE)
-            dir.create(file.path(rootpath, 'plot'), recursive = TRUE, showWarnings = FALSE)
-            #paths.a <- file.path(rootpath, sprintf('advice-%03d.png', 1:nvs))
-            #paths.s <- file.path(rootpath, sprintf('support-%03d.png', 1:nvs))
-            paths.a <- sprintf('plot/advice-%03d.png', 1:nvs)
-            paths.s <- sprintf('plot/support-%03d.png', 1:nvs)
-            paths.report <- sprintf('report-%03d', 1:nvs)
-            fullpaths.a <- file.path(rootpath, paths.a)
-            fullpaths.s <- file.path(rootpath, paths.s)
-            final.paths.report <- character(nvs)
-            withProgress(message = 'Generating reports',
-                         value = 0,
-                         detail = paste(0, '/', nvs), 
-                {
-                    for(i in 1:nvs) {
-                        ggp.a <- combined.plot(ga, i)
-                        ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
-                        ggp.s <- combined.plot(gs, i)
-                        ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
-                        params <- list(node = i,
-                                       plotAdvice = fullpaths.a[[i]],
-                                       plotSupport = fullpaths.s[[i]])
-                        #ggsave(paths.s[[i]], ggp.s)
-                        final.paths.report[i] <- report.factory(paths.report[[i]], params, template = template)
-                        #print(ns$full.directed)
-                        incProgress(1/nvs, detail = paste(i, "/", nvs))
-                    }
-                })
-            print(paths.report)
-            print(final.paths.report)
-            #mail.merge.df <- data.frame(NodeID = 1:nvs, advice = paths.a, support = paths.s)
-            #zip::zip(file, files = c(paths.a, paths.s), mode = 'cherry-pick')
-            zip::zip(file, files = c(paths.a, paths.s), root = rootpath, mode = 'mirror')
-            zip::zip_append(file, files = c(final.paths.report), mode = 'cherry-pick')
-        }
+        content = report.handler(input$reportFile, qualtricsNetworks(), max.reports = NULL)
+    )
+
+    output$report1 <- downloadHandler(
+        filename = "preview-report.zip",
+        content = report.handler(input$reportFile, qualtricsNetworks(), max.reports = 1)
     )
 }
 
@@ -438,7 +506,8 @@ ui <- fluidPage(
             hr(),
             tagList(
                 p('Generate reports'),
-                downloadButton("report", label = "Download"),
+                downloadButton("report1", label = "Preview Report"),
+                downloadButton("report", label = "Download All")
             ),
             #hr(),
             #actionButton("physics", label = "Physics"),
