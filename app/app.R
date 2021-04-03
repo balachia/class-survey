@@ -29,7 +29,7 @@ kLabelFontSize <- 24
 ############################################################
 ##### utility functions
 
-rescale <- function(x, minimum = 0, maximum = 1) { minimum + (maximum - minimum) * (x-min(x))/(max(x)-min(x)) }
+rescale <- function(x, minimum = 0, maximum = 1, na.rm = TRUE) { minimum + (maximum - minimum) * (x-min(x, na.rm = na.rm))/(max(x, na.rm = na.rm)-min(x, na.rm = na.rm)) }
 
 color.pal <- function(pal = 'YlGn', na.value = 0.5) {
     # replace missing with default value? with gray?
