@@ -94,6 +94,8 @@ set_edge_physics <- function(ge, networkType, networkDirection, width.weight = 1
 
 plottable.g <- function(g, vid) {
     #nbrs <- igraph::neighbors(g, params$node)
+    # access node by name
+    vidc <- as.character(vid)
     # set node colors, labels, size
     V(g)$label <- ''
     V(g)$color <- color.pal()(0.3)
@@ -103,11 +105,11 @@ plottable.g <- function(g, vid) {
     V(g)[name == vid]$color <- color.pal()(0.6)
     V(g)[name == vid]$size <- 18
     # set outgoing neighbors
-    V(g)[ .outnei(vid) ]$color <- color.pal()(0.4)
-    V(g)[ .outnei(vid) ]$size <- 12
+    V(g)[ .outnei(vidc) ]$color <- color.pal()(0.4)
+    V(g)[ .outnei(vidc) ]$size <- 12
     # set neighbors
-    V(g)[ .innei(vid) ]$color <- color.pal()(0.5)
-    V(g)[ .innei(vid) ]$size <- 14
+    V(g)[ .innei(vidc) ]$color <- color.pal()(0.5)
+    V(g)[ .innei(vidc) ]$size <- 14
     g
 }
 
