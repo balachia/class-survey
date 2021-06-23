@@ -1,6 +1,10 @@
 ---
-title: "Network report"
-output: pdf_document
+title: "Section Network Report"
+output:
+        pdf_document:
+            latex_engine: lualatex
+mainfont: Arial
+fontsize: 12pt
 params:
         plotAdvice: NA
         plotSupport: NA
@@ -10,12 +14,13 @@ params:
 This report presents a few different views of your position in the social
 network of your class section. Keep in mind that the information it describes is
 limited: it doesn't acknowledge your connections in your life outside INSEAD, or
-even to others around the school. Network research does suggest that people's
-personalities tend to drive how they form ties with others, and that people will
-tend to enter similar patterns of relationships throughout their lives. Yet
-research also suggests that effective networking can be learned and that anybody
-can develop an effective network with effort and training. As such, you should
-treat the results of this survey as one snapshot of your life, and use it as an
+even to others around the school, and it only asked about two facets of a
+personal relationship. Network research does suggest that people's personalities
+tend to drive how they form ties with others, and that people will tend to enter
+similar patterns of relationships throughout their lives. Yet research also
+suggests that effective networking can be learned and that anybody can develop
+an effective network with effort and training. As such, you should treat the
+results of this survey as one snapshot of your life, and use it as an
 opportunity to reflect on how you approach social situations and how you would
 like to develop as a networker.
 
