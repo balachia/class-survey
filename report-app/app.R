@@ -10,6 +10,7 @@ library(networkSurveyBackend)
 library(ggplot2)
 library(cowplot)
 library(gridGraphics)
+library(tinytex)
 
 options(shiny.reactlog=TRUE)
 
@@ -92,24 +93,24 @@ set_edge_physics <- function(ge, networkType, networkDirection, width.weight = 1
 ############################################################
 ##### network export
 
-plottable.g <- function(g, vid) {
+plottable.g <- function(g, vid, scale=1) {
     #nbrs <- igraph::neighbors(g, params$node)
     # access node by name
     vidc <- as.character(vid)
     # set node colors, labels, size
     V(g)$label <- ''
     V(g)$color <- color.pal()(0.3)
-    V(g)$size <- 9
+    V(g)$size <- scale*9
     # set you
     V(g)[name == vid]$label <- 'You'
     V(g)[name == vid]$color <- color.pal()(0.6)
-    V(g)[name == vid]$size <- 18
+    V(g)[name == vid]$size <- scale*18
     # set outgoing neighbors
     V(g)[ .outnei(vidc) ]$color <- color.pal()(0.4)
-    V(g)[ .outnei(vidc) ]$size <- 12
+    V(g)[ .outnei(vidc) ]$size <- scale*12
     # set neighbors
     V(g)[ .innei(vidc) ]$color <- color.pal()(0.5)
-    V(g)[ .innei(vidc) ]$size <- 14
+    V(g)[ .innei(vidc) ]$size <- scale*14
     g
 }
 
@@ -139,6 +140,11 @@ netplot <- function(g) {
              edge.width = 0.5,
              edge.curved = rep(0.00 * c(-1, 1), length.out = length(E(g))))
     }
+}
+
+netplot.only <- function(g, vid, ...) {
+    gp <- plottable.g(g, vid, ...)
+    plot_grid(netplot(gp))
 }
 
 pctile.plot <- function(g, vid) {
@@ -185,7 +191,7 @@ report.factory <- function(file, params, template = "report.Rmd") {
     )
 }
 
-report.handler <- function(inputTemplate, networks, max.reports = NULL) {
+report.handler <- function(inputTemplate, panelFile, networks, max.reports = NULL) {
     function(file) {
         # allow alternate template
         if(is.null(inputTemplate)) {
@@ -195,6 +201,17 @@ report.handler <- function(inputTemplate, networks, max.reports = NULL) {
         }
         ns <- networks
         nvs <- if(is.null(max.reports)) { length(V(ns$full.directed)) } else { 1 }
+        # allow additional info from panel
+        if(is.null(panelFile)) {
+            node.df <- networks$nodes
+        } else {
+            panel.df <- read_csv(panelFile$datapath)
+            node.df <- networks$nodes %>%
+                left_join(panel.df, by = 'NodeID')
+        }
+        nodes.info <- node.df %>%
+            as.list() %>%
+            transpose()
         # extract advice and support networks
         ga <- ns$advice.any
         gs <- ns$support.any
@@ -221,7 +238,7 @@ report.handler <- function(inputTemplate, networks, max.reports = NULL) {
                     ggp.s <- combined.plot(gs, i)
                     ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
                     # create parameters for report
-                    params <- list(node = networks$nodes[[i]],
+                    params <- list(node = nodes.info[[i]],
                                    plotAdvice = fullpaths.a[[i]],
                                    plotSupport = fullpaths.s[[i]])
                     print(networks$nodes)
@@ -259,9 +276,7 @@ server <- function(input, output, session) {
         # extract node characteristics
         nodes.fields <- c('NodeID', 'RecipientFirstName', 'RecipientLastName', 'RecipientEmail', 'FullName', kQuestionSudo, kQuestionConsent)
         nodes.data <- data.frame(NodeID = 1:length(V(g))) %>%
-            left_join(select(df.qualtrics, one_of(nodes.fields)), by = 'NodeID') %>%
-            as.list() %>%
-            transpose()
+            left_join(select(df.qualtrics, one_of(nodes.fields)), by = 'NodeID')
         # add layouts
         # build full edges network
         ge <- build_edge_network(g)
@@ -453,12 +468,12 @@ server <- function(input, output, session) {
     output$report <- downloadHandler(
         filename = "reports.zip",
         #filename = "reports.html",
-        content = report.handler(input$reportFile, qualtricsNetworks(), max.reports = NULL)
+        content = report.handler(input$reportFile, input$panelFile, qualtricsNetworks(), max.reports = NULL)
     )
 
     output$report1 <- downloadHandler(
         filename = "preview-report.zip",
-        content = report.handler(input$reportFile, qualtricsNetworks(), max.reports = 1)
+        content = report.handler(input$reportFile, input$panelFile, qualtricsNetworks(), max.reports = 1)
     )
 }
 
@@ -470,7 +485,8 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             titlePanel('Section Network Map Report Generator'),
-            fileInput("inFile", "Upload Qualtrics file (zip/csv)", accept = c(".zip", ".csv")),
+            fileInput("inFile", "Upload Qualtrics results file (zip/csv)", accept = c(".zip", ".csv")),
+            fileInput("panelFile", "Upload section panel file (csv)", accept = c(".csv")),
             fileInput("reportFile", "Upload alternate report template (Rmd)", accept = c(".Rmd")),
             #uiOutput("downloadUI"),
             hr(),
