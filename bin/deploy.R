@@ -1,6 +1,5 @@
 #!/usr/bin/env Rscript
 
-
 args <- commandArgs(trailingOnly=TRUE)
 
 apps <- list(
@@ -10,17 +9,12 @@ apps <- list(
     `demo-app` = list(local = "./demo-app", remote = "ob2-demo")
 )
 
-if(length(args) > 0) {
-    app.arg <- args[1]
-    if(app.arg %in% names(apps)) {
-        local.app <- apps[[app.arg]]$local
-        remote.app <- apps[[app.arg]]$remote
-    } else {
-        stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
-    }
+app.arg <- if(length(args) > 0) args[1] else "app"
+if(app.arg %in% names(apps)) {
+    local.app <- apps[[app.arg]]$local
+    remote.app <- apps[[app.arg]]$remote
 } else {
-    local.app <- apps[["app"]]$local
-    remote.app <- apps[["app"]]$remote
+    stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
 }
 
 rsconnect::deployApp(local.app,

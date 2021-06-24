@@ -8,15 +8,11 @@ apps <- list(
     `demo-app` = './demo-app'
 )
 
-if(length(args) > 0) {
-    app.arg <- args[1]
-    if(app.arg %in% names(apps)) {
-        dir.app <- apps[[app.arg]]
-    } else {
-        stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
-    }
+app.arg <- if(length(args) > 0) args[1] else "app"
+if(app.arg %in% names(apps)) {
+    dir.app <- apps[[app.arg]]
 } else {
-    dir.app <- apps[['app']]
+    stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
 }
 
 shiny::runApp(dir.app)
