@@ -225,6 +225,10 @@ report.handler <- function(inputTemplate, panelFile, networks, max.reports = NUL
         paths.s <- sprintf('plot/support-%03d.png', 1:nvs)
         fullpaths.a <- file.path(rootpath, paths.a)
         fullpaths.s <- file.path(rootpath, paths.s)
+        # big map only
+        #bigpaths <- lapply(c(advice='advice', support='support'),
+        #    function(x) sprintf('plot/big-%s-%03d.png', x, 1:nvs))
+        #full.bigpaths <- lapply(bigpaths, function(x) file.path(rootpath, x))
         # report temporary and final paths
         paths.report <- sprintf('report-%03d', 1:nvs)
         final.paths.report <- character(nvs)
@@ -237,6 +241,11 @@ report.handler <- function(inputTemplate, panelFile, networks, max.reports = NUL
                     ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
                     ggp.s <- combined.plot(gs, i)
                     ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
+                    # big plots
+                    #ggpb.a <- netplot.only(ga, i, scale = 0.4)
+                    #ggsave(full.bigpaths$advice[[i]], ggpb.a, width = 7, height = 7, dpi = 300)
+                    #ggpb.s <- netplot.only(gs, i, scale = 0.4)
+                    #ggsave(full.bigpaths$support[[i]], ggpb.s, width = 7, height = 7, dpi = 300)
                     # create parameters for report
                     params <- list(node = nodes.info[[i]],
                                    plotAdvice = fullpaths.a[[i]],
