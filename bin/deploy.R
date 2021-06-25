@@ -6,7 +6,7 @@ apps <- list(
     `app` = list(local = "./app", remote = "ob2-survey"),
     `app-dev` = list(local = "./app", remote = "ob2-survey-dev"),
     `report-app` = list(local = "./report-app", remote = "ob2-reports"),
-    `demo-app` = list(local = "./demo-app", remote = "ob2-demo")
+    `demo-app` = list(local = "./demo-app", remote = "network-demo")
 )
 
 app.arg <- if(length(args) > 0) args[1] else "app"
@@ -16,6 +16,8 @@ if(app.arg %in% names(apps)) {
 } else {
     stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
 }
+
+cat(sprintf("Deploying '%s' -> '%s'\n", local.app, remote.app))
 
 rsconnect::deployApp(local.app,
                      appName = remote.app)

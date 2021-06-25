@@ -1,0 +1,163 @@
+---
+title: "Network report"
+output: html_document
+params:
+        ga: NA
+        gs: NA
+        node: NA
+---
+
+```{r, echo = FALSE, message = FALSE}
+library(igraph)
+library(ggplot2)
+library(gridGraphics)
+library(cowplot)
+library(tidyverse)
+
+id <- as.character(params$node)
+
+color.pal <- function(pal = 'Greens', na.value = 0.5) {
+    # replace missing with default value? with gray?
+    function(x) {
+        x[is.na(x)] <- na.value
+        cr <- colorRamp(brewer.pal(9, pal), space='Lab')(x)
+        #cr[is.na(cr)] <- 170
+        rgb(cr[,1], cr[,2], cr[,3], maxColorValue = 255)
+    }
+}
+
+plottable.g <- function(g) {
+    #nbrs <- igraph::neighbors(g, params$node)
+    # set node colors, labels, size
+    V(g)$label <- ''
+    V(g)$color <- color.pal()(0.3)
+    V(g)$size <- 10
+    # set you
+    V(g)[name == id]$label <- 'You'
+    V(g)[name == id]$color <- color.pal()(0.5)
+    V(g)[name == id]$size <- 18
+    # set neighbors
+    V(g)[ .nei(id) ]$color <- color.pal()(0.5)
+    V(g)[ .nei(id) ]$size <- 14
+    g
+}
+
+g.stats <- function(g) {
+    dat <- igraph::as_data_frame(g, 'vertices') %>%
+        select(starts_with("centrality") | starts_with("name")) %>%
+        select(!c(centrality.outdegree, centrality.indegree)) %>%
+        rename(Eigenvector = centrality.eigen,
+               Closeness = centrality.close,
+               Betweenness = centrality.between,
+               Cluster = centrality.cluster) %>%
+        pivot_longer(!name, names_to = "centrality") %>%
+        group_by(centrality) %>%
+        mutate(pctile = rank(value) / n())
+    dat
+}
+
+netplot <- function(g) {
+    function() {
+        plot(g,
+             vertex.frame.color = 'white',
+             vertex.label.family = 'sans',
+             edge.color = '#aaaaaa',
+             edge.width = 0.5,
+             edge.curved = rep(0.25 * c(-1, 1), length.out = length(E(g))))
+    }
+}
+
+pctile.plot <- function(g) {
+    mp <- function(x) 0.5 * (max(x) + min(x))
+    df <- g.stats(g)
+    df.id <- df %>%
+        mutate(pctile.label = sprintf('%0.1f%%', 100 * pctile)) %>%
+        mutate(lab.h = ifelse(value < mp(value), -0.25, 1.25)) %>%
+        filter(name == id)
+    ggp <- df %>% ggplot(aes(value)) +
+        theme_void() +
+        theme(plot.margin = margin(0.3, 0, 0.3, 0, 'npc'),
+              plot.title = element_text(margin = margin(0, 0, 0.1, 0, 'npc'))) +
+        labs(x = NULL, y = NULL, title = 'Network Scores') +
+        facet_wrap(~centrality, ncol = 1, scales = 'free') +
+        geom_density(color = NA, fill = 'gray') +
+        geom_vline(data = df.id, aes(xintercept = value)) +
+        geom_text(data = df.id, aes(x = value, y = 0, label = pctile.label,
+                                    hjust = lab.h), vjust = -1) +
+        NULL
+    ggp
+}
+
+```
+
+This report presents a few different views of your position in the social
+network of your class section. Keep in mind that the information it describes is
+limited: it doesn't acknowledge your connections in your life outside INSEAD, or
+even to others around the school. Network research does suggest, though, that
+people's personalities tend to drive how they form ties with others, and that
+people will tend to enter similar patterns of relationships throughout their
+lives. As such, you should treat the results of this survey as one snapshot of
+your life, and use it as an opportunity to reflect on how you approach social
+situations.
+
+Let's dive in:
+
+# Advice network
+
+As a reminder, the advice network asked if there was "anyone in the section from
+whom you have regularly sought information and advice?" It is intended to
+measure the extent to which people see each other as valuable professional
+contacts.
+
+```{r, echo = FALSE}
+g <- plottable.g(params$ga)
+
+plot_grid(netplot(g), pctile.plot(g), nrow = 1, rel_widths = c(3,1))
+```
+
+The left panel shows your position in the advice network and highlights your
+direct ties. The right panel shows four measures of your position in the
+network, including your percentile within the section (the percent of the
+section with a lower score than you):
+
+- *Betweenness centrality*: Betweenness centrality measures the extent to which
+  you are a "bridge" between others in the network. It measures how many of the
+  shortest paths between any two people in the network have to pass through you.
+  Research suggests that people with a high betweenness centrality can
+  synthesize different perspectives within a network, or even act as a
+  matchmaker to bring people together.
+
+- *Closeness centrality*: Closeness centrality measures how close you are to all
+  other people in the network---it is your own "Kevin Bacon" score. People with
+  a high closeness centrality are likely to quickly receive and send out
+  information throughout a network.
+
+- *Cluster centrality*: Clustering measures the fraction of your connections
+  that are also connected to each other. People with a high clustering score
+  tend to be members of a closely-connected group that can exert pressure and
+  act cohesively in a network.
+
+- *Eigenvector centrality*: Eigenvector centrality is often used to measure
+  *status* or *prestige*. It measures the extent to which you are connected to
+  other highly connected people. Even if you do not have many direct
+  connections, you can have a high eigenvector score if your direct ties are
+  themselves central.
+
+# Social support network
+
+As a reminder, the support network asked if there was "anyone in the section
+whom you regard as a source of social support–that is, someone with whom you are
+comfortable discussing sensitive matters?" It is intended to measure the extent
+to which people see each other as confidantes or friends.
+
+```{r, echo = FALSE}
+g <- plottable.g(params$gs)
+
+plot_grid(netplot(g), pctile.plot(g), nrow = 1, rel_widths = c(3,1))
+```
+
+The left panel shows your position in the support network and highlights your
+direct ties. The right panel shows four measures of your position in the
+network, including your percentile within the section (the percent of the
+section with a lower score than you).
+
