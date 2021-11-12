@@ -1,0 +1,79 @@
+---
+title: "Section Network Report"
+output:
+        pdf_document:
+            latex_engine: lualatex
+mainfont: Arial
+fontsize: 12pt
+params:
+        plotAdvice: NA
+        plotSupport: NA
+        node: NA
+---
+
+This report presents a few different views of your position in the social
+network of your class section. Keep in mind that the information it describes is
+limited: it doesn't acknowledge your connections in your life outside INSEAD, or
+even to others around the school, and it only asked about two facets of a
+personal relationship. Network research does suggest that people's personalities
+tend to drive how they form ties with others, and that people will tend to enter
+similar patterns of relationships throughout their lives. Yet research also
+suggests that effective networking can be learned and that anybody can develop
+an effective network with effort and training. As such, you should treat the
+results of this survey as one snapshot of your life, and use it as an
+opportunity to reflect on how you approach social situations and how you would
+like to develop as a networker.
+
+Let's dive in:
+
+# Advice network
+
+As a reminder, the advice network asked if there was "anyone in the section from
+whom you have regularly sought information and advice?" It is intended to
+measure the extent to which people see each other as valuable professional
+contacts.
+
+![](`r params$plotAdvice`){width=75%}
+
+The left panel shows your position in the advice network and highlights your
+direct ties. The right panel shows four measures of your position in the
+network, including your percentile within the section (the percent of the
+section with a lower score than you):
+
+- *Betweenness centrality*: Betweenness centrality measures the extent to which
+  you are a "bridge" between others in the network. It measures how many of the
+  shortest paths between any two people in the network have to pass through you.
+  Research suggests that people with a high betweenness centrality can
+  synthesize different perspectives within a network, or even act as a
+  matchmaker to bring people together.
+
+- *Closeness centrality*: Closeness centrality measures how close you are to all
+  other people in the network---it is your own "Kevin Bacon" score. People with
+  a high closeness centrality are likely to quickly receive and send out
+  information throughout a network.
+
+- *Cluster centrality*: Clustering measures the fraction of your connections
+  that are also connected to each other. People with a high clustering score
+  tend to be members of a closely-connected group that can exert pressure and
+  act cohesively in a network.
+
+- *Eigenvector centrality*: Eigenvector centrality is often used to measure
+  *status* or *prestige*. It measures the extent to which you are connected to
+  other highly connected people. Even if you do not have many direct
+  connections, you can have a high eigenvector score if your direct ties are
+  themselves central.
+
+# Social support network
+
+As a reminder, the support network asked if there was "anyone in the section
+whom you regard as a source of social support–that is, someone with whom you are
+comfortable discussing sensitive matters?" It is intended to measure the extent
+to which people see each other as confidantes or friends.
+
+![](`r params$plotSupport`){width=75%}
+
+The left panel shows your position in the support network and highlights your
+direct ties. The right panel shows four measures of your position in the
+network, including your percentile within the section (the percent of the
+section with a lower score than you).
+

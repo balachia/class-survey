@@ -41,150 +41,26 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
     }
 }
 
-color.pal.qual <- function() {
-    #brewer.pal(12, 'Paired')
-    brewer.pal(8, 'Dark2')
-}
-
 ############################################################
 ##### network setup
 
-# load qualtrics survey file (error checking, various formats) and return as dataframee
-#load_qualtrics_file <- function(file_qualtrics) {
-#    # TODO: is filetype checking robust??
-#    #   can maybe wrap everything in a tryCatch
-#    suppressMessages({
-#        fHandle <- file_qualtrics$datapath
-#        if(file_qualtrics$type == "application/zip") { fHandle <- unzip(fHandle) }
-#        df.qualtrics <- qualtRics::read_survey(fHandle)
-#    })
-#    df.qualtrics
-#}
-
-# convert survey dataframe into a comprehensive igraph network
-#qualtrics_to_igraph <- function(df.qualtrics) {
-#    df.qualtrics <- df.qualtrics %>% mutate(ego = NodeID)
-#    # extract and longen network data
-#    net.prefix <- paste0(kQuestionNetwork, '_')
-#    df.net <- df.qualtrics %>%
-#        pivot_longer(cols = starts_with(net.prefix),
-#                     names_prefix = net.prefix,
-#                     names_to = 'alter') %>%
-#        mutate(alter = as.numeric(alter))
-#    # extract networks
-#    df.net$advice <- grepl(kNetworkAdvice, df.net$value)
-#    df.net$support <- grepl(kNetworkSupport, df.net$value)
-#    # drop self-ties
-#    df.net <- df.net %>%
-#        filter(ego != alter)
-#    # fix pseudonyms
-#    if(!(kQuestionSudo %in% colnames(df.qualtrics))) {
-#        df.qualtrics <- df.qualtrics %>%
-#            mutate("{kQuestionSudo}" := "")
-#    }
-#    # TODO: extract node characteristics
-#    df.nodes <- data.frame(id = unique(df.net$alter)) %>%
-#        left_join(df.qualtrics, by = c('id' = 'NodeID')) %>%
-#        rename(consent = all_of(kQuestionConsent), sudo = all_of(kQuestionSudo)) %>%
-#        select(id, FullName, consent, sudo)
-#    # add names, fixing missing nodes
-#    df.nodes <- df.nodes %>%
-#        mutate(maybeLabel = ifelse((consent == kConsent) & !(is.na(consent)), FullName, '???'),
-#               bConsent = (consent == kConsent) & !(is.na(consent))) %>%
-#        select(id, maybeLabel, bConsent, sudo) %>%
-#        rename(consent = bConsent)
-#    # build igraph
-#    ntwk <- df.net %>%
-#        select(ego, alter, advice, support) %>%
-#        graph_from_data_frame(directed = TRUE, vertices = df.nodes)
-#    E(ntwk)$width <- 1
-#    ntwk
-#}
-
-## extract directional and valenced networks from master igraph
-#build_network_directions <- function(g, slug = 'g') {
-#    # "directed" networks (preserving weight)
-#    g.d <- as.undirected(g, 'collapse', edge.attr.comb = 'sum') %>%
-#        add_centralities(g)
-#    # undirected networks
-#    g.mc <- as.undirected(g, 'collapse') %>%
-#        add_centralities(g)
-#    g.mm <- as.undirected(g, 'mutual') %>%
-#        add_centralities(g)
-#    # reset widths
-#    E(g.d)$width <- 2 * E(g.d)$width - 1
-#    E(g.mc)$width <- 1
-#    E(g.mm)$width <- 1
-#    # export
-#    res <- list(g.d, g.mc, g.mm)
-#    names(res) <- paste0(slug, c('.directed', '.any', '.mutual'))
-#    res
-#}
-
-#add_centralities <- function(g, g0) {
-#    # get centralities
-#    # TODO: add `constraint` (Burt's constraint)
-#    V(g)$centrality.outdegree <- degree(g0, mode = 'out')
-#    V(g)$centrality.indegree <- degree(g0, mode = 'in')
-#    #suppressWarnings({
-#    #    V(g)$centrality.close <- closeness(g)
-#    #})
-#    #V(g)$centrality.between <- betweenness(g)
-#    #V(g)$centrality.eigen <- eigen_centrality(g)$vector
-#    #V(g)$centrality.cluster <- transitivity(g, type = 'barrat', isolates = 'zero')
-#    suppressWarnings({
-#        V(g)$centrality.close <- closeness(g0, mode = 'in')
-#    })
-#    V(g)$centrality.between <- betweenness(g0)
-#    V(g)$centrality.eigen <- eigen_centrality(g0, directed = TRUE)$vector
-#    V(g)$centrality.cluster <- transitivity(g0, type = 'barrat', isolates = 'zero')
-#    g
-#}
-
-## convert base network into a complete network with multiple types of edge weight
-#build_edge_network <- function(g) {
-#    ge <- as.undirected(g, mode = 'collapse', edge.attr.comb = sum)
-#    # create ids
-#    E(ge)$id <- 1:length(E(ge))
-#    # advice network
-#    E(ge)$advice.directed <- E(ge)$advice
-#    E(ge)$advice.any      <- as.numeric(E(ge)$advice > 0)
-#    E(ge)$advice.mutual   <- as.numeric(E(ge)$advice == 2)
-#    # support network
-#    E(ge)$support.directed <- E(ge)$support
-#    E(ge)$support.any      <- as.numeric(E(ge)$support > 0)
-#    E(ge)$support.mutual   <- as.numeric(E(ge)$support == 2)
-#    # done
-#    ge
-#}
-
 # set node color by centrality metric
-set_node_color <- function(metric, community.no, g) {
-    # qualitative vs continuous metric
-    if(metric %in% c('community')) {
-        cent <- g[[paste0('community.', community.no)]]
-        pal <- color.pal.qual()
-        # set colors
-        g$color.background <- pal[cent]
-        g$color.highlight.background <- pal[cent]
-        g$color.highlight.border <- pal[cent]
-    } else {
-        cent <- switch(metric,
-                       eigen=rescale(g$centrality.eigen),
-                       between=rescale(g$centrality.between),
-                       close=rescale(g$centrality.close),
-                       indegree=rescale(g$centrality.indegree),
-                       outdegree=rescale(g$centrality.outdegree),
-                       cluster=rescale(g$centrality.cluster),
-                       0.5)
-        # restrict observed range to [0.5, 1]
-        cent <- kCentralityMinColor + (1 - kCentralityMinColor) * cent
-        # set colors
-        g$color.background <- color.pal()(cent)
-        #g$color.border <- color.pal()(cent)
-        g$color.highlight.background <- color.pal()(cent)
-        g$color.highlight.border <- color.pal()(cent)
-    }
+set_node_color <- function(metric, g) {
+    cent <- switch(metric,
+                   eigen=rescale(g$centrality.eigen),
+                   between=rescale(g$centrality.between),
+                   close=rescale(g$centrality.close),
+                   indegree=rescale(g$centrality.indegree),
+                   outdegree=rescale(g$centrality.outdegree),
+                   cluster=rescale(g$centrality.cluster),
+                   0.5)
+    # restrict observed range to [0.5, 1]
+    cent <- kCentralityMinColor + (1 - kCentralityMinColor) * cent
+    # set colors
+    g$color.background <- color.pal()(cent)
+    #g$color.border <- color.pal()(cent)
+    g$color.highlight.background <- color.pal()(cent)
+    g$color.highlight.border <- color.pal()(cent)
     g
 }
 
@@ -237,30 +113,16 @@ report.factory <- function(file, ga, gs, node) {
 ##### SERVER
 
 server <- function(input, output, session) {
-    #qualtricsNetworks <- reactive({
-    #    # load network
-    #    req(input$inFile)
-    #    df.qualtrics <- load_qualtrics_file(input$inFile)
-    #    # convert to igraph
-    #    g <- qualtrics_to_igraph(df.qualtrics)
-    #    # TODO: build centralities and layouts here?
-    #    # build networks: full, advice, support
-    #    res.full <- subgraph.edges(g, which(E(g)$advice | E(g)$support), delete.vertices = FALSE) %>%
-    #        build_network_directions('full')
-    #    res.advice <- subgraph.edges(g, which(E(g)$advice), delete.vertices = FALSE) %>%
-    #        build_network_directions('advice')
-    #    res.support <- subgraph.edges(g, which(E(g)$support), delete.vertices = FALSE) %>%
-    #        build_network_directions('support')
-    #    # build full edges network
-    #    ge <- build_edge_network(g)
-    #    # export networks
-    #    c(res.full, res.advice, res.support, list(edges = ge))
-    #})
-
     qualtricsNetworks <- reactive({
-        # load network
-        req(input$inFile)
-        df.qualtrics <- networkSurveyBackend::load_qualtrics_file(input$inFile)
+        # load network (with default ZKC data)
+        #req(input$inFile)
+        print(input$inFile)
+        if(is.null(input$inFile)) {
+            inFile <- list(datapath = './data/ZKC Qualtrics Pseudonyms.csv', type = 'text/csv')
+        } else {
+            inFile <- input$inFile
+        }
+        df.qualtrics <- networkSurveyBackend::load_qualtrics_file(inFile)
         # convert to igraph
         g <- networkSurveyBackend::qualtrics_to_igraph(df.qualtrics,
                 qidNetwork = kQuestionNetwork, qidSudo = kQuestionSudo, qidConsent = kQuestionConsent,
@@ -302,7 +164,7 @@ server <- function(input, output, session) {
         g <- isolate(ntwk())
         #g <- ntwk()
         #g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
-        g$nodes <- set_node_color(isolate(input$colorMetric), isolate(input$communityNumber), g$nodes)
+        g$nodes <- set_node_color(isolate(input$colorMetric), g$nodes)
         g$nodes <- set_node_size(isolate(input$consenters), g$nodes)
         visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
             visNodes(size = kNodeSizeBase,
@@ -350,7 +212,7 @@ server <- function(input, output, session) {
     observe({
         #input$actionRedraw
         g <- ntwk()
-        g$nodes <- set_node_color(input$colorMetric, input$communityNumber, g$nodes)
+        g$nodes <- set_node_color(input$colorMetric, g$nodes)
         # update nodes
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes)
@@ -365,36 +227,12 @@ server <- function(input, output, session) {
             visUpdateNodes(g$nodes)
     })
 
-    #observeEvent(input$physics, {
-    #    visNetworkProxy("network") %>%
-    #        visPhysics(enabled = TRUE)
-    #})
-
     # set various sizes after determining initial graph diameter
     observeEvent(input$actionStabilized, {
         visNetworkProxy("network") %>%
             #visFit(animation = list(duration = 2000)) %>%
             visGetPositions()
     })
-
-    #observeEvent(ntwk(), {
-    #    visNetworkProxy("network") %>%
-    #        visGetPositions()
-    #})
-
-    #derivedNodeSizeBase <- reactive({
-    #    span <- function(x) { max(x) - min(x) }
-    #    pos <- (input$network_positions)
-    #    if(!is.null(pos)) {
-    #        span.x <- map_dbl(pos, 'x') %>%
-    #            span()
-    #        span.y <- map_dbl(pos, 'x') %>%
-    #            span()
-    #        kNodeSizeBase * (max(span.x, span.y) / 1000)
-    #    } else {
-    #        kNodeSizeBase
-    #    }
-    #})
 
     derivedSizeBases <- reactive({
         span <- function(x) { max(x) - min(x) }
@@ -414,21 +252,6 @@ server <- function(input, output, session) {
                  edge = 1)
         }
     })
-
-
-    #observe({
-    #    visNetworkProxy("network") %>%
-    #        visPhysics(solver = "barnesHut",
-    #                   #timestep = 0.1,
-    #                   maxVelocity = input$speed,
-    #                   barnesHut = list(gravitationalConstant = input$gravK, centralGravity = input$cgrav * input$gravK * (-0.3/2000), damping = 0.09),
-    #                   stabilization = list(iterations = 1000, fit = TRUE))
-    #})
-
-    #output$selcol <- renderText({ input$inFile$type })
-
-    #output$selcoltable <- renderTable({ ntwk()$nodes })
-    #output$selcoltable2 <- renderTable({ ntwk()$edges })
 
     output$downloadUI <- renderUI({
         req(qualtricsNetworks())
@@ -478,10 +301,15 @@ server <- function(input, output, session) {
 ##### UI
 
 ui <- fluidPage(
+    shinyjs::useShinyjs(),
     sidebarLayout(
         sidebarPanel(
-            titlePanel('Section Network Map'),
-            fileInput("inFile", "Upload Qualtrics file (zip/csv)", accept = c(".zip", ".csv")),
+            titlePanel('Section Network Map (Demo)'),
+            p('Demo with Zachary Karate Club data', style='font-style:italic'),
+            disabled(
+                fileInput("inFile", "Upload Qualtrics file (zip/csv)", accept = c(".zip", ".csv"))
+            ),
+            uiOutput("downloadUI"),
             hr(),
             radioGroupButtons('networkTie',
                               'Select network',
@@ -497,12 +325,9 @@ ui <- fluidPage(
                               selected = '.any'),
             radioGroupButtons('colorMetric',
                               'Color by',
-                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector', 'Cluster', 'Community'),
-                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster', 'community'),
+                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector', 'Cluster'),
+                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster'),
                               selected = kColorButtonDefault),
-            sliderInput('communityNumber',
-                        'Number of communities',
-                        min = 1, max = 8, value = 1, step = 1, round = TRUE, ticks = FALSE),
             checkboxGroupButtons('consenters',
                                  'Real names:',
                                  justified = TRUE,
@@ -518,7 +343,6 @@ ui <- fluidPage(
                                  choiceNames = c('Show pseudonyms'),
                                  choiceValues = c('sudos')),
             hr(),
-            uiOutput("downloadUI"),
             p('Generate reports at',
                 a('https://balachia.shinyapps.io/ob2-reports',
                   href = 'https://balachia.shinyapps.io/ob2-reports',
