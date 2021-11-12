@@ -41,6 +41,11 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
     }
 }
 
+color.pal.qual <- function() {
+    #brewer.pal(12, 'Paired')
+    brewer.pal(8, 'Dark2')
+}
+
 ############################################################
 ##### network setup
 
@@ -154,22 +159,32 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
 #}
 
 # set node color by centrality metric
-set_node_color <- function(metric, g) {
-    cent <- switch(metric,
-                   eigen=rescale(g$centrality.eigen),
-                   between=rescale(g$centrality.between),
-                   close=rescale(g$centrality.close),
-                   indegree=rescale(g$centrality.indegree),
-                   outdegree=rescale(g$centrality.outdegree),
-                   cluster=rescale(g$centrality.cluster),
-                   0.5)
-    # restrict observed range to [0.5, 1]
-    cent <- kCentralityMinColor + (1 - kCentralityMinColor) * cent
-    # set colors
-    g$color.background <- color.pal()(cent)
-    #g$color.border <- color.pal()(cent)
-    g$color.highlight.background <- color.pal()(cent)
-    g$color.highlight.border <- color.pal()(cent)
+set_node_color <- function(metric, community.no, g) {
+    # qualitative vs continuous metric
+    if(metric %in% c('community')) {
+        cent <- g[[paste0('community.', community.no)]]
+        pal <- color.pal.qual()
+        # set colors
+        g$color.background <- pal[cent]
+        g$color.highlight.background <- pal[cent]
+        g$color.highlight.border <- pal[cent]
+    } else {
+        cent <- switch(metric,
+                       eigen=rescale(g$centrality.eigen),
+                       between=rescale(g$centrality.between),
+                       close=rescale(g$centrality.close),
+                       indegree=rescale(g$centrality.indegree),
+                       outdegree=rescale(g$centrality.outdegree),
+                       cluster=rescale(g$centrality.cluster),
+                       0.5)
+        # restrict observed range to [0.5, 1]
+        cent <- kCentralityMinColor + (1 - kCentralityMinColor) * cent
+        # set colors
+        g$color.background <- color.pal()(cent)
+        #g$color.border <- color.pal()(cent)
+        g$color.highlight.background <- color.pal()(cent)
+        g$color.highlight.border <- color.pal()(cent)
+    }
     g
 }
 
@@ -287,7 +302,7 @@ server <- function(input, output, session) {
         g <- isolate(ntwk())
         #g <- ntwk()
         #g$nodes <- set_node_color(kColorButtonDefault, g$nodes)
-        g$nodes <- set_node_color(isolate(input$colorMetric), g$nodes)
+        g$nodes <- set_node_color(isolate(input$colorMetric), isolate(input$communityNumber), g$nodes)
         g$nodes <- set_node_size(isolate(input$consenters), g$nodes)
         visNetwork(nodes = g$nodes, edges = g$edges, width = "100%", height = "100%") %>%
             visNodes(size = kNodeSizeBase,
@@ -335,7 +350,7 @@ server <- function(input, output, session) {
     observe({
         #input$actionRedraw
         g <- ntwk()
-        g$nodes <- set_node_color(input$colorMetric, g$nodes)
+        g$nodes <- set_node_color(input$colorMetric, input$communityNumber, g$nodes)
         # update nodes
         visNetworkProxy("network") %>%
             visUpdateNodes(g$nodes)
@@ -483,9 +498,12 @@ ui <- fluidPage(
                               selected = '.any'),
             radioGroupButtons('colorMetric',
                               'Color by',
-                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector', 'Cluster'),
-                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster'),
+                              choiceNames = c(kColorButtonDefault, 'Out-Degree', 'In-Degree', 'Closeness', 'Betweenness', 'Eigenvector', 'Cluster', 'Community'),
+                              choiceValues = c(kColorButtonDefault, 'outdegree', 'indegree', 'close', 'between', 'eigen', 'cluster', 'community'),
                               selected = kColorButtonDefault),
+            sliderInput('communityNumber',
+                        'Number of communities',
+                        min = 1, max = 8, value = 1, step = 1, round = TRUE, ticks = FALSE),
             checkboxGroupButtons('consenters',
                                  'Real names:',
                                  justified = TRUE,
