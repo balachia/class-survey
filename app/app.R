@@ -468,7 +468,6 @@ ui <- fluidPage(
         sidebarPanel(
             titlePanel('Section Network Map'),
             fileInput("inFile", "Upload Qualtrics file (zip/csv)", accept = c(".zip", ".csv")),
-            uiOutput("downloadUI"),
             hr(),
             radioGroupButtons('networkTie',
                               'Select network',
@@ -502,6 +501,7 @@ ui <- fluidPage(
                                  choiceNames = c('Show pseudonyms'),
                                  choiceValues = c('sudos')),
             hr(),
+            uiOutput("downloadUI"),
             p('Generate reports at',
                 a('https://balachia.shinyapps.io/ob2-reports',
                   href = 'https://balachia.shinyapps.io/ob2-reports',
