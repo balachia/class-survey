@@ -44,9 +44,15 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
     }
 }
 
-color.pal.qual <- function() {
+color.pal.qual <- function(tint = 0) {
     #brewer.pal(12, 'Paired')
-    brewer.pal(8, 'Dark2')
+    #pal <- brewer.pal(8, 'Dark2')
+    pal <- brewer.pal(8, 'Set1')
+    if(tint > 0) {
+        pal.mat <- sapply(pal, function(col) colorRamp(c(col, 'white'), space = 'Lab')(tint))
+        pal <- rgb(pal.mat[1,], pal.mat[2,], pal.mat[3,], maxColorValue = 255)
+    }
+    pal
 }
 
 ############################################################
@@ -112,20 +118,29 @@ plottable.g <- function(g, vid, scale=1) {
     #nbrs <- igraph::neighbors(g, params$node)
     # access node by name
     vidc <- as.character(vid)
+    # VERTEX OPERATIONS
     # set node colors, labels, size
+    # set colors by community
     V(g)$label <- ''
-    V(g)$color <- color.pal()(0.3)
+    #V(g)$color <- color.pal()(0.3)
     V(g)$size <- scale*9
+    V(g)$frame.color <- 'white'
+    V(g)$color <- color.pal.qual(0.4)[V(g)$community.4]
     # set you
     V(g)[name == vid]$label <- 'You'
-    V(g)[name == vid]$color <- color.pal()(0.6)
+    #V(g)[name == vid]$color <- color.pal()(0.6)
+    V(g)[name == vid]$color <- color.pal.qual(0)[V(g)[name == vid]$community.4]
     V(g)[name == vid]$size <- scale*18
-    # set outgoing neighbors
-    V(g)[ .outnei(vidc) ]$color <- color.pal()(0.4)
-    V(g)[ .outnei(vidc) ]$size <- scale*12
+    V(g)[name == vid]$frame.color <- 'gray25'
     # set neighbors
-    V(g)[ .innei(vidc) ]$color <- color.pal()(0.5)
-    V(g)[ .innei(vidc) ]$size <- scale*14
+    V(g)[ .nei(vidc) ]$color <- color.pal.qual(0.2)[V(g)[ .nei(vidc) ]$community.4]
+    V(g)[ .nei(vidc) ]$size <- scale*12
+    # EDGE OPERATIONS
+    E(g)$width <- 0.5
+    E(g)$color <- '#aaaaaa'
+    # check incident edges
+    E(g)[ .inc(vidc) ]$width <- 1
+    E(g)[ .inc(vidc) ]$color <- 'gray25'
     g
 }
 
@@ -139,6 +154,7 @@ g.stats <- function(g) {
                Cluster = centrality.cluster) %>%
         pivot_longer(!name, names_to = "centrality") %>%
         group_by(centrality) %>%
+        mutate(value = rescale(value)) %>%
         mutate(pctile = rank(value) / n())
     dat
 }
@@ -149,10 +165,11 @@ netplot <- function(g) {
         plot(g,
              margin = 0,
              frame = FALSE,
-             vertex.frame.color = 'white',
+             #vertex.frame.color = 'white',
              vertex.label.family = 'sans',
-             edge.color = '#aaaaaa',
-             edge.width = 0.5,
+             vertex.label.color = 'black',
+             #edge.color = '#aaaaaa',
+             #edge.width = 0.5,
              edge.curved = rep(0.00 * c(-1, 1), length.out = length(E(g))))
     }
 }
@@ -166,19 +183,30 @@ pctile.plot <- function(g, vid) {
     mp <- function(x) 0.5 * (max(x) + min(x))
     df <- g.stats(g)
     df.id <- df %>%
-        mutate(pctile.label = sprintf('%0.1f%%', 100 * pctile)) %>%
-        mutate(lab.h = ifelse(value < mp(value), -0.25, 1.25)) %>%
+        #mutate(pctile.label = sprintf('%0.1f%%', 100 * pctile)) %>%
+        #mutate(lab.h = ifelse(value < mp(value), -0.25, 1.25)) %>%
+        mutate(value.round = round(value, 1)) %>%
+        mutate(value.round = pmax(0.1, pmin(0.9, value.round))) %>%
         filter(name == vid)
-    ggp <- df %>% ggplot(aes(value)) +
+    # adjust by focal actor (with added "noise")
+    df.adj <- left_join(df, df.id, by = 'centrality', suffix = c('', '.y'))
+    df.adj <- df.adj %>%
+        mutate(value = value - value.round)
+    #print(df.id)
+    #print(df)
+    #print(df.adj)
+    ggp <- df.adj %>% ggplot(aes(value)) +
         theme_void(base_size = 8) +
         theme(plot.margin = margin(0.2, 0, 0.2, 0, 'npc'),
               plot.title = element_text(margin = margin(0, 0, 0.1, 0, 'npc'))) +
         labs(x = NULL, y = NULL, title = 'Network Scores') +
         facet_wrap(~centrality, ncol = 1, scales = 'free') +
-        geom_density(color = NA, fill = 'gray') +
-        geom_vline(data = df.id, aes(xintercept = value)) +
-        geom_text(data = df.id, aes(x = value, y = 0, label = pctile.label,
-                                    hjust = lab.h), vjust = -1, size = 2.5) +
+        geom_density(color = NA, fill = 'gray75') +
+        geom_density(aes(x = stage(value, after_stat = scales::oob_censor(x, c(-0.1, 0.1)))),
+                     color = NA, fill = 'gray25') +
+        #geom_vline(data = df.id, aes(xintercept = value - value.round)) +
+        #geom_text(data = df.id, aes(x = value, y = 0, label = pctile.label,
+        #                            hjust = lab.h), vjust = -1, size = 2.5) +
         NULL
     ggp
 }
@@ -230,8 +258,8 @@ report.handler <- function(inputTemplate, panelFile, networks, max.reports = NUL
         # extract advice and support networks
         ga <- ns$advice.any
         gs <- ns$support.any
-        ga <- add_layout_(ga, with_fr())
-        gs <- add_layout_(gs, with_fr())
+        ga <- add_layout_(ga, with_fr(niter = 1000))
+        gs <- add_layout_(gs, with_fr(niter = 1000))
         # create file paths
         rootpath <- tempdir(TRUE)
         dir.create(file.path(rootpath, 'plot'), recursive = TRUE, showWarnings = FALSE)
@@ -253,8 +281,10 @@ report.handler <- function(inputTemplate, panelFile, networks, max.reports = NUL
             {
                 for(i in 1:nvs) {
                     ggp.a <- combined.plot(ga, i)
+                    #ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
                     ggsave(fullpaths.a[[i]], ggp.a, width = 5, height = 3, dpi = 300)
                     ggp.s <- combined.plot(gs, i)
+                    #ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
                     ggsave(fullpaths.s[[i]], ggp.s, width = 5, height  = 3, dpi = 300)
                     # big plots
                     #ggpb.a <- netplot.only(ga, i, scale = 0.4)
