@@ -43,7 +43,8 @@ color.pal <- function(pal = 'YlGn', na.value = 0.5) {
 
 color.pal.qual <- function() {
     #brewer.pal(12, 'Paired')
-    brewer.pal(8, 'Dark2')
+    #brewer.pal(8, 'Dark2')
+    brewer.pal(8, 'Set1')
 }
 
 ############################################################
