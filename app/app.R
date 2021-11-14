@@ -479,7 +479,6 @@ server <- function(input, output, session) {
 ##### UI
 
 ui <- fluidPage(
-    #shinyjs::useShinyjs(),
     sidebarLayout(
         sidebarPanel(
             titlePanel('Section Network Map'),
