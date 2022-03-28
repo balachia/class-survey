@@ -15,4 +15,6 @@ if(app.arg %in% names(apps)) {
     stop(paste('app must be one of "', paste(names(apps), collapse = '" "'), '"\n', sep = ''))
 }
 
-shiny::runApp(dir.app)
+# stabilize port
+port.offset <- which(names(apps) == app.arg) - 1
+shiny::runApp(dir.app, port = 35416 + port.offset)
